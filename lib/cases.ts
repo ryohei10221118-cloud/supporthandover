@@ -56,8 +56,7 @@ function daysSince(dateStr: string): number | null {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
 
-export function parseCasesCsv(csv: string): CaseRow[] {
-  const rows: string[][] = parse(csv, { relax_column_count: true, skip_empty_lines: false });
+export function parseCaseRows(rows: string[][]): CaseRow[] {
   const headerIdx = findHeaderRow(rows);
   if (headerIdx === -1) return [];
 
@@ -99,6 +98,11 @@ export function parseCasesCsv(csv: string): CaseRow[] {
   return cases;
 }
 
+export function parseCasesCsv(csv: string): CaseRow[] {
+  const rows: string[][] = parse(csv, { relax_column_count: true, skip_empty_lines: false });
+  return parseCaseRows(rows);
+}
+
 function buildCsvExportUrl(): string | null {
   const sheetId = process.env.SHEET_ID;
   const gid = process.env.SHEET_GID;
@@ -109,11 +113,9 @@ function buildCsvExportUrl(): string | null {
   return url.toString();
 }
 
-export async function fetchCases(): Promise<{ cases: CaseRow[]; source: "sheet" | "mock" }> {
+async function fetchViaCsvExport(): Promise<CaseRow[]> {
   const url = buildCsvExportUrl();
-  if (!url) {
-    return { cases: mockCases(), source: "mock" };
-  }
+  if (!url) throw new Error("SHEET_ID is not configured.");
 
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
@@ -123,7 +125,21 @@ export async function fetchCases(): Promise<{ cases: CaseRow[]; source: "sheet" 
     );
   }
   const csv = await res.text();
-  return { cases: parseCasesCsv(csv), source: "sheet" };
+  return parseCasesCsv(csv);
+}
+
+export async function fetchCases(): Promise<{ cases: CaseRow[]; source: "sheet" | "mock" }> {
+  // Prefer the service-account-authenticated Sheets API when configured: the
+  // sheet stays private, only readable by whoever holds that credential.
+  const { hasServiceAccountConfig, fetchViaSheetsApi } = await import("./sheetsApi");
+  if (hasServiceAccountConfig()) {
+    return { cases: await fetchViaSheetsApi(), source: "sheet" };
+  }
+
+  if (!process.env.SHEET_ID) {
+    return { cases: mockCases(), source: "mock" };
+  }
+  return { cases: await fetchViaCsvExport(), source: "sheet" };
 }
 
 export function mockCases(): CaseRow[] {
