@@ -126,6 +126,19 @@ th.sortable:hover {
   color: var(--accent);
 }
 
+td.collapse-toggle {
+  text-align: center;
+  cursor: pointer;
+  color: var(--accent);
+  background: var(--bg);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+td.collapse-toggle:hover {
+  text-decoration: underline;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);

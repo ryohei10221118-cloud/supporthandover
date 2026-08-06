@@ -103,9 +103,44 @@ export default function CaseBoard({
     setDateSort((prev) => (prev === "none" ? "desc" : prev === "desc" ? "asc" : "none"));
   }
 
+  const OLD_THRESHOLD_DAYS = 30;
+  const [showOlder, setShowOlder] = useState(false);
+
+  const { recentRows, olderRows } = useMemo(() => {
+    const recent: CaseRow[] = [];
+    const older: CaseRow[] = [];
+    for (const c of sorted) {
+      if (c.daysOpen !== null && c.daysOpen > OLD_THRESHOLD_DAYS) older.push(c);
+      else recent.push(c);
+    }
+    return { recentRows: recent, olderRows: older };
+  }, [sorted]);
+
   const openCount = cases.filter((c) => !c.isCompleted).length;
   const completedCount = cases.filter((c) => c.isCompleted).length;
   const overdueCount = cases.filter((c) => c.isOverdue).length;
+
+  function renderRow(c: CaseRow, key: string) {
+    return (
+      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
+        <td>{c.seq}</td>
+        <td>
+          {c.date}
+          {c.daysOpen !== null && !c.isCompleted ? (
+            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
+          ) : null}
+        </td>
+        <td>{c.department}</td>
+        <td>{c.cs}</td>
+        <td>{c.op}</td>
+        <td className="note-cell">{c.note}</td>
+        <td>
+          <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
+          {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+        </td>
+      </tr>
+    );
+  }
 
   async function refresh() {
     setLoading(true);
@@ -196,27 +231,15 @@ export default function CaseBoard({
             </tr>
           </thead>
           <tbody>
-            {sorted.map((c, i) => (
-              <tr key={`${c.seq}-${i}`} className={c.isOverdue ? "overdue" : undefined}>
-                <td>{c.seq}</td>
-                <td>
-                  {c.date}
-                  {c.daysOpen !== null && !c.isCompleted ? (
-                    <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
-                      {c.daysOpen}天前
-                    </div>
-                  ) : null}
-                </td>
-                <td>{c.department}</td>
-                <td>{c.cs}</td>
-                <td>{c.op}</td>
-                <td className="note-cell">{c.note}</td>
-                <td>
-                  <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-                  {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+            {recentRows.map((c, i) => renderRow(c, `recent-${i}`))}
+            {olderRows.length > 0 && (
+              <tr>
+                <td colSpan={7} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
+                  {showOlder ? "▲ 收合" : "▼ 显示"} 1个月前的纪录({olderRows.length}笔)
                 </td>
               </tr>
-            ))}
+            )}
+            {showOlder && olderRows.map((c, i) => renderRow(c, `older-${i}`))}
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={7} className="empty">
