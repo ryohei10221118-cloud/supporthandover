@@ -254,25 +254,31 @@ tr.overdue td {
 .note-cell {
   max-width: 320px;
   white-space: pre-wrap;
-  position: relative;
 }
 
-.note-cell.clamped {
-  cursor: pointer;
-  max-height: 5.6em;
+.note-text.clamped {
+  max-height: 4.2em;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
 
 .note-toggle {
   display: block;
   margin-top: 4px;
+  background: none;
+  border: none;
+  padding: 0;
   color: var(--accent);
   font-size: 0.75rem;
+  font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.note-toggle:hover {
+  text-decoration: underline;
 }
 
 .empty {

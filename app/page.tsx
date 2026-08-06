@@ -23,8 +23,7 @@ export default async function Home() {
 
   return (
     <main className="page">
-      <h1>案件追踪看板</h1>
-      <p className="subtitle">依部门 / 负责人 / 状态筛选目前待追踪的案件</p>
+      <h1>T1HO case board</h1>
       <CaseBoard initialCases={initialCases} initialSource={source} initialError={error} />
     </main>
   );

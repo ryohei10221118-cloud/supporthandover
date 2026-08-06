@@ -178,7 +178,7 @@ export default function CaseBoard({
   }
 
   function renderRow(c: CaseRow, key: string) {
-    const isLong = c.note.length > 150 || c.note.split("\n").length > 4;
+    const isLong = c.note.length > 120 || c.note.split("\n").length > 3;
     const isExpanded = expandedNotes.has(key);
     return (
       <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
@@ -192,12 +192,13 @@ export default function CaseBoard({
         <td>{c.department}</td>
         <td>{c.cs}</td>
         <td>{c.op}</td>
-        <td
-          className={`note-cell ${isLong && !isExpanded ? "clamped" : ""}`}
-          onClick={isLong ? () => toggleNote(key) : undefined}
-        >
-          {c.note}
-          {isLong && <span className="note-toggle">{isExpanded ? "▲ 收合" : "▼ 展开"}</span>}
+        <td className="note-cell">
+          <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{c.note}</div>
+          {isLong && (
+            <button type="button" className="note-toggle" onClick={() => toggleNote(key)}>
+              {isExpanded ? "▲ 收合" : "⋯ 内容较长,点击展开"}
+            </button>
+          )}
         </td>
         <td>
           <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
