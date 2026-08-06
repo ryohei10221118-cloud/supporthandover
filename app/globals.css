@@ -1,0 +1,199 @@
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --text: #1a1d23;
+  --text-muted: #6b7280;
+  --accent: #2563eb;
+  --overdue: #dc2626;
+  --overdue-bg: #fef2f2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1d2026;
+    --border: #2c303a;
+    --text: #e8eaed;
+    --text-muted: #9aa0a8;
+    --accent: #5b8def;
+    --overdue: #f87171;
+    --overdue-bg: #3a1d1d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 24px;
+}
+
+.banner {
+  background: var(--overdue-bg);
+  color: var(--overdue);
+  border: 1px solid var(--overdue);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin-bottom: 20px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.stat .value {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.stat .label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.stat.overdue .value {
+  color: var(--overdue);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.filters select,
+.filters input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
+.filters input[type="text"] {
+  flex: 1;
+  min-width: 200px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+tr.overdue td {
+  background: var(--overdue-bg);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge.status-pending { background: #fef3c7; color: #92400e; }
+.badge.status-replied { background: #dbeafe; color: #1e40af; }
+.badge.status-followup { background: #fed7aa; color: #9a3412; }
+.badge.status-movetoho { background: #e9d5ff; color: #6b21a8; }
+.badge.status-closed { background: #dcfce7; color: #166534; }
+.badge.status-other { background: #e5e7eb; color: #374151; }
+
+.badge.overdue-tag {
+  background: var(--overdue);
+  color: white;
+  margin-left: 6px;
+}
+
+.note-cell {
+  max-width: 320px;
+  white-space: pre-wrap;
+}
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.refresh-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.refresh-btn:hover {
+  border-color: var(--accent);
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}

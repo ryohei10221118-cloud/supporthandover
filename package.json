@@ -1,0 +1,34 @@
+{
+  "name": "supporthandover",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryohei10221118-cloud/supporthandover.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ryohei10221118-cloud/supporthandover/issues"
+  },
+  "homepage": "https://github.com/ryohei10221118-cloud/supporthandover#readme",
+  "dependencies": {
+    "next": "^16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "csv-parse": "^7.0.2",
+    "typescript": "^7.0.2"
+  }
+}
