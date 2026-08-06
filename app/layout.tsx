@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "T1HO case board",
-  description: "跨team案件追踪状态看板",
+  description: "跨team案件追蹤狀態看板",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

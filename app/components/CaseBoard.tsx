@@ -49,7 +49,7 @@ function MultiSelect({
       ? allLabel
       : selected.length === 1
       ? selected[0]
-      : `已选 ${selected.length} 项`;
+      : `已選 ${selected.length} 項`;
 
   function toggle(opt: string) {
     onChange(selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt]);
@@ -196,7 +196,7 @@ export default function CaseBoard({
           <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{c.note}</div>
           {isLong && (
             <button type="button" className="note-toggle" onClick={() => toggleNote(key)}>
-              {isExpanded ? "▲ 收合" : "⋯ 内容较长,点击展开"}
+              {isExpanded ? "▲ Show less" : "⋯ Show more"}
             </button>
           )}
         </td>
@@ -226,19 +226,19 @@ export default function CaseBoard({
       {source === "mock" && (
         <div className="banner">
           {error
-            ? `目前无法读取Sheet资料，显示的是范例资料。原因：${error}`
-            : "尚未设定Sheet连结，目前显示的是范例资料。"}
+            ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
+            : "尚未設定Sheet連結，目前顯示的是範例資料。"}
         </div>
       )}
 
       <div className="summary">
         <div className="stat">
           <div className="value">{cases.length}</div>
-          <div className="label">总案件数</div>
+          <div className="label">總案件數</div>
         </div>
         <div className="stat">
           <div className="value">{openCount}</div>
-          <div className="label">待追踪(未完成)</div>
+          <div className="label">待追蹤(未完成)</div>
         </div>
         <div className="stat">
           <div className="value">{completedCount}</div>
@@ -246,31 +246,31 @@ export default function CaseBoard({
         </div>
         <div className="stat overdue">
           <div className="value">{overdueCount}</div>
-          <div className="label">逾期(超过3天未完成)</div>
+          <div className="label">逾期(超過3天未完成)</div>
         </div>
       </div>
 
       <div className="toolbar">
         <div className="filters">
           <MultiSelect
-            allLabel="全部部门"
+            allLabel="全部部門"
             options={departments}
             selected={selectedDepartments}
             onChange={setSelectedDepartments}
           />
           <MultiSelect
-            allLabel="全部状态"
+            allLabel="全部狀態"
             options={statuses}
             selected={selectedStatuses}
             onChange={setSelectedStatuses}
           />
           <input
             type="text"
-            placeholder="搜寻序列 / OP / CS / 内容..."
+            placeholder="搜尋序列 / OP / CS / 內容..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <span className="result-count">筛选出 {filtered.length} 笔</span>
+          <span className="result-count">篩選出 {filtered.length} 筆</span>
         </div>
         <button className="refresh-btn" onClick={refresh} disabled={loading}>
           {loading ? "更新中..." : "重新整理"}
@@ -283,13 +283,13 @@ export default function CaseBoard({
             <tr>
               <th>序列</th>
               <th className="sortable" onClick={toggleDateSort}>
-                日期 {dateSort === "desc" ? "↓新到旧" : dateSort === "asc" ? "↑旧到新" : "↕"}
+                日期 {dateSort === "desc" ? "↓新到舊" : dateSort === "asc" ? "↑舊到新" : "↕"}
               </th>
-              <th>部门</th>
+              <th>部門</th>
               <th>CS</th>
               <th>OP</th>
-              <th>内容</th>
-              <th>状态</th>
+              <th>內容</th>
+              <th>狀態</th>
             </tr>
           </thead>
           <tbody>
@@ -297,7 +297,7 @@ export default function CaseBoard({
             {olderRows.length > 0 && (
               <tr>
                 <td colSpan={7} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
-                  {showOlder ? "▲ 收合" : "▼ 显示"} 1个月前的纪录({olderRows.length}笔)
+                  {showOlder ? "▲ 收合" : "▼ 顯示"} 1個月前的紀錄({olderRows.length}筆)
                 </td>
               </tr>
             )}
@@ -305,7 +305,7 @@ export default function CaseBoard({
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={7} className="empty">
-                  没有符合条件的案件
+                  沒有符合條件的案件
                 </td>
               </tr>
             )}
