@@ -33,6 +33,47 @@ function seqNumber(seq: string): number {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+function MultiSelect({
+  allLabel,
+  options,
+  selected,
+  onChange,
+}: {
+  allLabel: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const summary =
+    selected.length === 0
+      ? allLabel
+      : selected.length === 1
+      ? selected[0]
+      : `已选 ${selected.length} 项`;
+
+  function toggle(opt: string) {
+    onChange(selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt]);
+  }
+
+  return (
+    <details className="multiselect">
+      <summary>{summary}</summary>
+      <div className="multiselect-menu">
+        <label className="multiselect-option">
+          <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} />
+          {allLabel}
+        </label>
+        {options.map((opt) => (
+          <label key={opt} className="multiselect-option">
+            <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
+            {opt}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export default function CaseBoard({
   initialCases,
   initialSource,
@@ -47,8 +88,8 @@ export default function CaseBoard({
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
 
-  const [department, setDepartment] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("none");
 
@@ -71,15 +112,15 @@ export default function CaseBoard({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cases.filter((c) => {
-      if (department !== "all" && c.department !== department) return false;
-      if (status !== "all" && statusCategory(c.status) !== status) return false;
+      if (selectedDepartments.length > 0 && !selectedDepartments.includes(c.department)) return false;
+      if (selectedStatuses.length > 0 && !selectedStatuses.includes(statusCategory(c.status))) return false;
       if (q) {
         const haystack = `${c.seq} ${c.op} ${c.cs} ${c.note} ${c.reply}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [cases, department, status, search]);
+  }, [cases, selectedDepartments, selectedStatuses, search]);
 
   const sorted = useMemo(() => {
     const withMeta = filtered.map((c) => ({
@@ -125,7 +166,20 @@ export default function CaseBoard({
   const completedCount = cases.filter((c) => c.isCompleted).length;
   const overdueCount = cases.filter((c) => c.isOverdue).length;
 
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+
+  function toggleNote(key: string) {
+    setExpandedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function renderRow(c: CaseRow, key: string) {
+    const isLong = c.note.length > 150 || c.note.split("\n").length > 4;
+    const isExpanded = expandedNotes.has(key);
     return (
       <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
         <td>{c.seq}</td>
@@ -138,7 +192,13 @@ export default function CaseBoard({
         <td>{c.department}</td>
         <td>{c.cs}</td>
         <td>{c.op}</td>
-        <td className="note-cell">{c.note}</td>
+        <td
+          className={`note-cell ${isLong && !isExpanded ? "clamped" : ""}`}
+          onClick={isLong ? () => toggleNote(key) : undefined}
+        >
+          {c.note}
+          {isLong && <span className="note-toggle">{isExpanded ? "▲ 收合" : "▼ 展开"}</span>}
+        </td>
         <td>
           <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
           {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
@@ -191,22 +251,18 @@ export default function CaseBoard({
 
       <div className="toolbar">
         <div className="filters">
-          <select value={department} onChange={(e) => setDepartment(e.target.value)}>
-            <option value="all">全部部门</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="all">全部状态</option>
-            {statuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <MultiSelect
+            allLabel="全部部门"
+            options={departments}
+            selected={selectedDepartments}
+            onChange={setSelectedDepartments}
+          />
+          <MultiSelect
+            allLabel="全部状态"
+            options={statuses}
+            selected={selectedStatuses}
+            onChange={setSelectedStatuses}
+          />
           <input
             type="text"
             placeholder="搜寻序列 / OP / CS / 内容..."

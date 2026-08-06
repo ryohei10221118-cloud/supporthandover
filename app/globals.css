@@ -110,6 +110,64 @@ h1 {
   min-width: 200px;
 }
 
+.multiselect {
+  position: relative;
+}
+
+.multiselect summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.multiselect summary::-webkit-details-marker {
+  display: none;
+}
+
+.multiselect summary::after {
+  content: " ▾";
+}
+
+.multiselect[open] summary::after {
+  content: " ▴";
+}
+
+.multiselect-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  min-width: 160px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.multiselect-option:hover {
+  background: var(--bg);
+}
+
 .result-count {
   align-self: center;
   color: var(--text-muted);
@@ -196,6 +254,25 @@ tr.overdue td {
 .note-cell {
   max-width: 320px;
   white-space: pre-wrap;
+  position: relative;
+}
+
+.note-cell.clamped {
+  cursor: pointer;
+  max-height: 5.6em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.note-toggle {
+  display: block;
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .empty {
