@@ -50,7 +50,14 @@ function buildColumnMap(header: string[]): Partial<Record<keyof typeof HEADER_KE
 function daysSince(dateStr: string): number | null {
   const trimmed = dateStr.trim();
   if (!trimmed) return null;
-  const parsed = new Date(trimmed);
+  let parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    // A handful of historical rows are missing the dash before the day,
+    // e.g. "2025-1212" instead of "2025-12-12" — recover that shape rather
+    // than silently dropping the date.
+    const match = trimmed.match(/^(\d{4})-(\d{2})(\d{2})$/);
+    if (match) parsed = new Date(`${match[1]}-${match[2]}-${match[3]}`);
+  }
   if (Number.isNaN(parsed.getTime())) return null;
   const diffMs = Date.now() - parsed.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));

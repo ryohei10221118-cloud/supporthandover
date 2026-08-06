@@ -1,7 +1,11 @@
 import { fetchCases, mockCases } from "@/lib/cases";
 import CaseBoard from "./components/CaseBoard";
 
+// Same reasoning as app/api/cases/route.ts: force every request to hit the
+// Sheets API fresh instead of serving a cached snapshot.
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 export default async function Home() {
   let initialCases;

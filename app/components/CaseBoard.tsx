@@ -91,9 +91,12 @@ export default function CaseBoard({
       if (dateSort !== "none") {
         const diff = dateSort === "desc" ? b.t - a.t : a.t - b.t;
         if (diff !== 0) return diff;
+        // Same-day ties break in the same direction as the active sort, so
+        // "newest first" doesn't flip back to ascending case numbers within a day.
+        return dateSort === "desc" ? b.n - a.n : a.n - b.n;
       }
-      // Always fall back to the team's own 序列 numbering, never the
-      // sheet/API's row order, so ties (or the default view) stay predictable.
+      // No date sort active: fall back to the team's own 序列 numbering,
+      // never the sheet/API's row order, so the default view stays predictable.
       return a.n - b.n;
     });
     return withMeta.map((x) => x.c);
@@ -110,7 +113,9 @@ export default function CaseBoard({
     const recent: CaseRow[] = [];
     const older: CaseRow[] = [];
     for (const c of sorted) {
-      if (c.daysOpen !== null && c.daysOpen > OLD_THRESHOLD_DAYS) older.push(c);
+      // A date we couldn't parse is treated as old rather than recent —
+      // malformed historical rows shouldn't default to showing up front.
+      if (c.daysOpen === null || c.daysOpen > OLD_THRESHOLD_DAYS) older.push(c);
       else recent.push(c);
     }
     return { recentRows: recent, olderRows: older };
