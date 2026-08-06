@@ -110,6 +110,22 @@ h1 {
   min-width: 200px;
 }
 
+.result-count {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  color: var(--accent);
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);

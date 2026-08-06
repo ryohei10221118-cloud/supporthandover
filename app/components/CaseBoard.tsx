@@ -42,6 +42,7 @@ export default function CaseBoard({
   const [department, setDepartment] = useState("all");
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
+  const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("none");
 
   const departments = useMemo(
     () => Array.from(new Set(cases.map((c) => c.department).filter(Boolean))).sort(),
@@ -71,6 +72,17 @@ export default function CaseBoard({
       return true;
     });
   }, [cases, department, status, search]);
+
+  const sorted = useMemo(() => {
+    if (dateSort === "none") return filtered;
+    const withTime = filtered.map((c) => ({ c, t: new Date(c.date).getTime() || 0 }));
+    withTime.sort((a, b) => (dateSort === "desc" ? b.t - a.t : a.t - b.t));
+    return withTime.map((x) => x.c);
+  }, [filtered, dateSort]);
+
+  function toggleDateSort() {
+    setDateSort((prev) => (prev === "none" ? "desc" : prev === "desc" ? "asc" : "none"));
+  }
 
   const openCount = cases.filter((c) => !c.isCompleted).length;
   const completedCount = cases.filter((c) => c.isCompleted).length;
@@ -142,6 +154,7 @@ export default function CaseBoard({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <span className="result-count">筛选出 {filtered.length} 笔</span>
         </div>
         <button className="refresh-btn" onClick={refresh} disabled={loading}>
           {loading ? "更新中..." : "重新整理"}
@@ -153,7 +166,9 @@ export default function CaseBoard({
           <thead>
             <tr>
               <th>序列</th>
-              <th>日期</th>
+              <th className="sortable" onClick={toggleDateSort}>
+                日期 {dateSort === "desc" ? "↓新到旧" : dateSort === "asc" ? "↑旧到新" : "↕"}
+              </th>
               <th>部门</th>
               <th>CS</th>
               <th>OP</th>
@@ -162,7 +177,7 @@ export default function CaseBoard({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((c, i) => (
+            {sorted.map((c, i) => (
               <tr key={`${c.seq}-${i}`} className={c.isOverdue ? "overdue" : undefined}>
                 <td>{c.seq}</td>
                 <td>
@@ -183,7 +198,7 @@ export default function CaseBoard({
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={7} className="empty">
                   没有符合条件的案件
