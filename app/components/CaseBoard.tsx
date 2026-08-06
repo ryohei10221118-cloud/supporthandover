@@ -13,6 +13,17 @@ function statusClass(status: string): string {
   return "status-other";
 }
 
+const COMPLETED_LABEL = "已完成";
+const STATUS_ORDER = ["pending", "follow up", "move to ho", COMPLETED_LABEL.toLowerCase()];
+
+// Groups "replied" and "Closed" under one "已完成" filter category, since once
+// a case has been answered other teams don't need to track it individually.
+function statusCategory(status: string): string {
+  const key = status.trim().toLowerCase();
+  if (key === "replied" || key === "closed") return COMPLETED_LABEL;
+  return status;
+}
+
 export default function CaseBoard({
   initialCases,
   initialSource,
@@ -35,16 +46,23 @@ export default function CaseBoard({
     () => Array.from(new Set(cases.map((c) => c.department).filter(Boolean))).sort(),
     [cases]
   );
-  const statuses = useMemo(
-    () => Array.from(new Set(cases.map((c) => c.status).filter(Boolean))).sort(),
-    [cases]
-  );
+  const statuses = useMemo(() => {
+    const unique = Array.from(new Set(cases.map((c) => statusCategory(c.status)).filter(Boolean)));
+    return unique.sort((a, b) => {
+      const ia = STATUS_ORDER.indexOf(a.toLowerCase());
+      const ib = STATUS_ORDER.indexOf(b.toLowerCase());
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  }, [cases]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cases.filter((c) => {
       if (department !== "all" && c.department !== department) return false;
-      if (status !== "all" && c.status !== status) return false;
+      if (status !== "all" && statusCategory(c.status) !== status) return false;
       if (q) {
         const haystack = `${c.seq} ${c.op} ${c.cs} ${c.note} ${c.reply}`.toLowerCase();
         if (!haystack.includes(q)) return false;
@@ -53,7 +71,8 @@ export default function CaseBoard({
     });
   }, [cases, department, status, search]);
 
-  const openCount = cases.filter((c) => !c.isClosed).length;
+  const openCount = cases.filter((c) => !c.isCompleted).length;
+  const completedCount = cases.filter((c) => c.isCompleted).length;
   const overdueCount = cases.filter((c) => c.isOverdue).length;
 
   async function refresh() {
@@ -86,11 +105,15 @@ export default function CaseBoard({
         </div>
         <div className="stat">
           <div className="value">{openCount}</div>
-          <div className="label">待追踪(未关闭)</div>
+          <div className="label">待追踪(未完成)</div>
+        </div>
+        <div className="stat">
+          <div className="value">{completedCount}</div>
+          <div className="label">已完成</div>
         </div>
         <div className="stat overdue">
           <div className="value">{overdueCount}</div>
-          <div className="label">逾期(超过3天未关闭)</div>
+          <div className="label">逾期(超过3天未完成)</div>
         </div>
       </div>
 
@@ -143,7 +166,7 @@ export default function CaseBoard({
                 <td>{c.seq}</td>
                 <td>
                   {c.date}
-                  {c.daysOpen !== null && !c.isClosed ? (
+                  {c.daysOpen !== null && !c.isCompleted ? (
                     <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
                       {c.daysOpen}天前
                     </div>

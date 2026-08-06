@@ -11,6 +11,7 @@ export interface CaseRow {
   status: CaseStatus;
   issue: string;
   isClosed: boolean;
+  isCompleted: boolean;
   isOverdue: boolean;
   daysOpen: number | null;
 }

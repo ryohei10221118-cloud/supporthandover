@@ -3,11 +3,18 @@ import type { CaseRow } from "./types";
 
 const OVERDUE_DAYS = 3;
 const CLOSED_STATUSES = new Set(["closed"]);
+// "已完成" groups replied + Closed: once a case has been answered, other
+// teams no longer need to track it even if the requester hasn't marked it Closed yet.
+const COMPLETED_STATUSES = new Set(["replied", "closed"]);
+
+export function isCompletedStatus(status: string): boolean {
+  return COMPLETED_STATUSES.has(status.trim().toLowerCase());
+}
 
 // Header keywords we look for in the sheet's header row. Position fallback
 // covers the "note" column, whose header text sits under the sheet's merged
 // instruction banner and isn't reliably readable as plain text.
-const HEADER_KEYWORDS: Record<keyof Omit<CaseRow, "isClosed" | "isOverdue" | "daysOpen">, string[]> = {
+const HEADER_KEYWORDS: Record<keyof Omit<CaseRow, "isClosed" | "isCompleted" | "isOverdue" | "daysOpen">, string[]> = {
   seq: ["序列"],
   date: ["日期"],
   op: ["op"],
@@ -71,6 +78,7 @@ export function parseCasesCsv(csv: string): CaseRow[] {
     const status = cell(row, "status");
     const daysOpen = daysSince(date);
     const isClosed = CLOSED_STATUSES.has(status.trim().toLowerCase());
+    const isCompleted = isCompletedStatus(status);
 
     cases.push({
       seq,
@@ -83,7 +91,8 @@ export function parseCasesCsv(csv: string): CaseRow[] {
       status,
       issue: cell(row, "issue"),
       isClosed,
-      isOverdue: !isClosed && daysOpen !== null && daysOpen > OVERDUE_DAYS,
+      isCompleted,
+      isOverdue: !isCompleted && daysOpen !== null && daysOpen > OVERDUE_DAYS,
       daysOpen,
     });
   }
