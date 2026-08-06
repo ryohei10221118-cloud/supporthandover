@@ -19,9 +19,10 @@ const STATUS_ORDER = ["pending", "follow up", "move to ho", COMPLETED_LABEL.toLo
 // Groups "replied" and "Closed" under one "已完成" filter category, since once
 // a case has been answered other teams don't need to track it individually.
 function statusCategory(status: string): string {
-  const key = status.trim().toLowerCase();
+  const trimmed = status.trim();
+  const key = trimmed.toLowerCase();
   if (key === "replied" || key === "closed") return COMPLETED_LABEL;
-  return status;
+  return trimmed;
 }
 
 export default function CaseBoard({
@@ -161,8 +162,8 @@ export default function CaseBoard({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((c) => (
-              <tr key={c.seq} className={c.isOverdue ? "overdue" : undefined}>
+            {filtered.map((c, i) => (
+              <tr key={`${c.seq}-${i}`} className={c.isOverdue ? "overdue" : undefined}>
                 <td>{c.seq}</td>
                 <td>
                   {c.date}
