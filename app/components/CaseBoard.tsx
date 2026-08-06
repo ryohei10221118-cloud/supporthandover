@@ -25,6 +25,14 @@ function statusCategory(status: string): string {
   return trimmed;
 }
 
+// Extracts the numeric part of a case number like "TH2617" -> 2617, so
+// ordering follows the team's own numbering instead of whatever row order
+// the sheet/API happens to return.
+function seqNumber(seq: string): number {
+  const match = seq.match(/(\d+)\s*$/);
+  return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
 export default function CaseBoard({
   initialCases,
   initialSource,
@@ -74,10 +82,21 @@ export default function CaseBoard({
   }, [cases, department, status, search]);
 
   const sorted = useMemo(() => {
-    if (dateSort === "none") return filtered;
-    const withTime = filtered.map((c) => ({ c, t: new Date(c.date).getTime() || 0 }));
-    withTime.sort((a, b) => (dateSort === "desc" ? b.t - a.t : a.t - b.t));
-    return withTime.map((x) => x.c);
+    const withMeta = filtered.map((c) => ({
+      c,
+      t: new Date(c.date).getTime() || 0,
+      n: seqNumber(c.seq),
+    }));
+    withMeta.sort((a, b) => {
+      if (dateSort !== "none") {
+        const diff = dateSort === "desc" ? b.t - a.t : a.t - b.t;
+        if (diff !== 0) return diff;
+      }
+      // Always fall back to the team's own 序列 numbering, never the
+      // sheet/API's row order, so ties (or the default view) stay predictable.
+      return a.n - b.n;
+    });
+    return withMeta.map((x) => x.c);
   }, [filtered, dateSort]);
 
   function toggleDateSort() {
