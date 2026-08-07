@@ -5,14 +5,14 @@ import { appendReply } from "@/lib/sheetsApi";
 
 export const dynamic = "force-dynamic";
 
-// MM-DD HH:MM in UTC+8, independent of whatever timezone the server runs in.
+// MM/DD HH:MM in UTC+8, independent of whatever timezone the server runs in.
 function formatTimestampUTC8(date: Date): string {
   const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(shifted.getUTCDate()).padStart(2, "0");
   const hh = String(shifted.getUTCHours()).padStart(2, "0");
   const min = String(shifted.getUTCMinutes()).padStart(2, "0");
-  return `${mm}-${dd} ${hh}:${min}`;
+  return `${mm}/${dd} ${hh}:${min}`;
 }
 
 export async function POST(req: Request) {
