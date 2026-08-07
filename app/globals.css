@@ -115,9 +115,17 @@ h1 {
   font-size: 0.85rem;
 }
 
-.filters input[type="text"] {
+.search-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
-  min-width: 200px;
+  min-width: 160px;
+}
+
+.search-group input[type="text"] {
+  flex: 1;
+  min-width: 120px;
 }
 
 .date-range {
@@ -154,10 +162,8 @@ h1 {
   border: 1px solid var(--accent);
   color: var(--accent);
   border-radius: 6px;
-  padding: 5px 10px;
+  padding: 6px 10px;
   font-size: 0.75rem;
-  margin-bottom: 16px;
-  width: fit-content;
   max-width: 100%;
 }
 

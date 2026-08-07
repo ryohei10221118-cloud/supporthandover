@@ -1240,6 +1240,13 @@ export default function CaseBoard({
       <div className="page-header">
         <h1>T1HO case board</h1>
         <div className="top-bar">
+          {updateAvailable && (
+            <div className="update-banner">
+              <span>
+                Sheet updated{changedSeqs.length > 0 ? ` (${formatChangedSeqs(changedSeqs)})` : ""}, please refresh
+              </span>
+            </div>
+          )}
           <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
             {loading ? "更新中..." : "重新整理"}
           </button>
@@ -1299,14 +1306,6 @@ export default function CaseBoard({
           {error
             ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
             : "尚未設定Sheet連結，目前顯示的是範例資料。"}
-        </div>
-      )}
-
-      {updateAvailable && (
-        <div className="update-banner">
-          <span>
-            Sheet updated{changedSeqs.length > 0 ? ` (${formatChangedSeqs(changedSeqs)})` : ""}, please refresh
-          </span>
         </div>
       )}
 
@@ -1389,13 +1388,15 @@ export default function CaseBoard({
               </button>
             )}
           </div>
-          <input
-            type="text"
-            placeholder="搜尋序列 / OP / CS / 內容..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <span className="result-count">篩選出 {filteredValidCount} 筆</span>
+          <div className="search-group">
+            <input
+              type="text"
+              placeholder="搜尋序列 / OP / CS / 內容..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <span className="result-count">篩選出 {filteredValidCount} 筆</span>
+          </div>
         </div>
       </div>
 
