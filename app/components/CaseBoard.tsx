@@ -103,6 +103,32 @@ function seqNumber(seq: string): number {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+// Compares a freshly-fetched row set against what's currently on screen to
+// work out which cases actually changed — matched by rowIndex (the sheet's
+// own row number) rather than 序列, since 序列 values aren't guaranteed
+// unique. A row present in `next` but not `prev` counts as changed too
+// (newly added case).
+const CHANGE_TRACKED_FIELDS = ["status", "reply", "note", "op", "cs", "department", "date", "issue"] as const;
+
+function diffChangedSeqs(prev: CaseRow[], next: CaseRow[]): string[] {
+  const prevByRow = new Map(prev.map((c) => [c.rowIndex, c]));
+  const changed = new Set<string>();
+  for (const c of next) {
+    const before = prevByRow.get(c.rowIndex);
+    if (!before || CHANGE_TRACKED_FIELDS.some((field) => before[field] !== c[field])) {
+      changed.add(c.seq);
+    }
+  }
+  return Array.from(changed);
+}
+
+const CHANGED_SEQS_DISPLAY_CAP = 5;
+
+function formatChangedSeqs(seqs: string[]): string {
+  if (seqs.length <= CHANGED_SEQS_DISPLAY_CAP) return seqs.join(", ");
+  return `${seqs.slice(0, CHANGED_SEQS_DISPLAY_CAP).join(", ")} +${seqs.length - CHANGED_SEQS_DISPLAY_CAP} more`;
+}
+
 // Restricted to RFC 3986 URL-safe characters rather than "any non-
 // whitespace" — Chinese text is routinely typed right up against a pasted
 // URL with no space in between, and a [^\s]+ class would swallow it into
@@ -942,7 +968,6 @@ export default function CaseBoard({
   const [quickStatusRowKey, setQuickStatusRowKey] = useState<string | null>(null);
   const [quickStatusErrorRowKey, setQuickStatusErrorRowKey] = useState<string | null>(null);
   const [quickStatusError, setQuickStatusError] = useState<string | null>(null);
-  const [editingStatusRowKey, setEditingStatusRowKey] = useState<string | null>(null);
 
   async function quickChangeStatus(c: CaseRow, rowKey: string, status: string) {
     setQuickStatusRowKey(rowKey);
@@ -1017,7 +1042,6 @@ export default function CaseBoard({
           />
         );
       case "status": {
-        const isEditingStatus = editingStatusRowKey === rowKey;
         const isSubmittingStatus = quickStatusRowKey === rowKey;
         // If the current status is already one of the two writable ones,
         // only offer the other — no point listing the status it already is.
@@ -1028,49 +1052,39 @@ export default function CaseBoard({
           : WRITABLE_STATUSES;
         return (
           <td key={colKey}>
-            {isEditingStatus ? (
-              <select
-                className="quick-status-select"
-                autoFocus
-                value=""
-                disabled={isSubmittingStatus}
-                onFocus={(e) => {
-                  try {
-                    e.currentTarget.showPicker?.();
-                  } catch {
-                    // showPicker isn't supported in every browser — the
-                    // select is still focused, so a click still opens it
-                  }
-                }}
-                onChange={(e) => {
-                  if (e.target.value) quickChangeStatus(c, rowKey, e.target.value);
-                  setEditingStatusRowKey(null);
-                }}
-                onBlur={() => setEditingStatusRowKey(null)}
-              >
-                {availableStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="status-badges">
-                {me ? (
-                  <button
-                    type="button"
-                    className={`badge ${statusClass(c.status)}`}
-                    disabled={isSubmittingStatus}
-                    onClick={() => setEditingStatusRowKey(rowKey)}
-                  >
+            <div className="status-badges">
+              {me ? (
+                // A real (invisible) <select> sits directly on top of the
+                // visible badge, exactly matching its size — clicking
+                // anywhere on the badge opens the native dropdown in place,
+                // with nothing swapped or resized, so the target never
+                // jumps out from under the cursor.
+                <span className="badge-select-wrap">
+                  <span className={`badge ${statusClass(c.status)}`}>
                     {isSubmittingStatus ? "更新中..." : c.status}
-                  </button>
-                ) : (
-                  <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-                )}
-                {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
-              </div>
-            )}
+                  </span>
+                  <select
+                    className="quick-status-overlay"
+                    aria-label="變更狀態"
+                    value=""
+                    disabled={isSubmittingStatus}
+                    onChange={(e) => {
+                      if (e.target.value) quickChangeStatus(c, rowKey, e.target.value);
+                    }}
+                  >
+                    <option value="" disabled hidden />
+                    {availableStatuses.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              ) : (
+                <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
+              )}
+              {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+            </div>
             {quickStatusErrorRowKey === rowKey && quickStatusError && (
               <div className="comment-error">{quickStatusError}</div>
             )}
@@ -1148,6 +1162,8 @@ export default function CaseBoard({
       setSource(data.source);
       setError(data.error);
       setUpdateAvailable(false);
+      setChangedSeqs([]);
+      notifiedRef.current = false;
       // Re-sync the modified-time baseline so this refresh doesn't
       // immediately re-trigger the "there's an update" banner.
       try {
@@ -1167,7 +1183,17 @@ export default function CaseBoard({
   // rather than silently swapping data underneath an in-progress filter,
   // scroll position, or open comment/edit panel.
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [changedSeqs, setChangedSeqs] = useState<string[]>([]);
   const lastKnownModifiedRef = useRef<string | null>(null);
+  // What's currently on screen, kept in sync so the polling effect (which
+  // only runs once, deps []) can diff against it without a stale closure.
+  const casesRef = useRef(cases);
+  useEffect(() => {
+    casesRef.current = cases;
+  }, [cases]);
+  // Guards the one-time background fetch below so it runs once per detected
+  // change, not on every 30s poll while the banner is already showing.
+  const notifiedRef = useRef(false);
 
   useEffect(() => {
     async function checkForUpdates() {
@@ -1181,6 +1207,21 @@ export default function CaseBoard({
         }
         if (data.modifiedTime !== lastKnownModifiedRef.current) {
           setUpdateAvailable(true);
+          if (!notifiedRef.current) {
+            notifiedRef.current = true;
+            // Pull the full row data once, in the background, purely to
+            // work out which case(s) changed — doesn't touch the displayed
+            // table, same as the modifiedTime check itself.
+            try {
+              const casesRes = await fetch("/api/cases", { cache: "no-store" });
+              const casesData = await casesRes.json();
+              if (Array.isArray(casesData.cases)) {
+                setChangedSeqs(diffChangedSeqs(casesRef.current, casesData.cases));
+              }
+            } catch {
+              setChangedSeqs([]);
+            }
+          }
         }
       } catch {
         // transient network hiccup — try again next interval
@@ -1263,7 +1304,9 @@ export default function CaseBoard({
 
       {updateAvailable && (
         <div className="update-banner">
-          <span>Sheet updated, please refresh</span>
+          <span>
+            Sheet updated{changedSeqs.length > 0 ? ` (${formatChangedSeqs(changedSeqs)})` : ""}, please refresh
+          </span>
         </div>
       )}
 

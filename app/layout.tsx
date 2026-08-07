@@ -73,7 +73,11 @@ const THEME_INIT_SCRIPT = `(function () {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-Hant">
+    // The theme-init script below intentionally sets style/data-theme
+    // attributes on this element before React hydrates, which would
+    // otherwise be flagged as a hydration mismatch — that's the whole
+    // point of the script, so it's suppressed here rather than avoided.
+    <html lang="zh-Hant" suppressHydrationWarning>
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {children}

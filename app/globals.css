@@ -325,19 +325,32 @@ tr.overdue td {
   white-space: nowrap;
 }
 
-button.badge {
-  border: none;
-  font-family: inherit;
-  cursor: pointer;
+.badge-select-wrap {
+  position: relative;
+  display: inline-block;
 }
 
-button.badge:hover {
+.badge-select-wrap:hover .badge {
   opacity: 0.85;
 }
 
-button.badge:disabled {
-  opacity: 0.6;
+.quick-status-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.quick-status-overlay:disabled {
   cursor: default;
+}
+
+.badge-select-wrap:has(.quick-status-overlay:disabled) .badge {
+  opacity: 0.6;
 }
 
 .badge.status-pending { background: #fef3c7; color: #92400e; }
@@ -622,23 +635,6 @@ button.badge:disabled {
   font-size: 0.75rem;
   cursor: pointer;
   white-space: nowrap;
-}
-
-.quick-status-select {
-  display: block;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 6px;
-  padding: 3px 6px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  max-width: 100%;
-}
-
-.quick-status-select:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .comment-trigger:hover {
