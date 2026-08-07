@@ -1,6 +1,15 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import type { CaseRow } from "@/lib/types";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
@@ -50,6 +59,19 @@ function isColumnOrder(value: unknown): value is ColumnKey[] {
     DEFAULT_COLUMN_ORDER.every((k) => value.includes(k))
   );
 }
+
+const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
+  seq: 90,
+  date: 110,
+  department: 90,
+  cs: 90,
+  op: 220,
+  note: 280,
+  reply: 280,
+  status: 150,
+};
+const MIN_COLUMN_WIDTH = 60;
+const COLUMN_WIDTHS_STORAGE_KEY = "t1ho_column_widths";
 
 function statusClass(status: string): string {
   const key = status.trim().toLowerCase();
@@ -352,6 +374,47 @@ export default function CaseBoard({
       }
       return next;
     });
+  }
+
+  // --- Draggable column widths ---
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === "object") {
+        setColumnWidths((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      // ignore malformed/unavailable localStorage — fall back to default
+    }
+  }, []);
+
+  function startColumnResize(key: ColumnKey, e: ReactMouseEvent) {
+    e.preventDefault();
+    e.stopPropagation(); // don't let this also start a column-reorder drag
+    const startX = e.clientX;
+    const startWidth = columnWidths[key];
+
+    function onMove(ev: MouseEvent) {
+      const nextWidth = Math.max(MIN_COLUMN_WIDTH, startWidth + (ev.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }));
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setColumnWidths((prev) => {
+        try {
+          localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(prev));
+        } catch {
+          // ignore write failures
+        }
+        return prev;
+      });
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }
 
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -657,6 +720,33 @@ export default function CaseBoard({
     }
   }
 
+  // --- Quick status change (no comment required) ---
+  const [quickStatusRowKey, setQuickStatusRowKey] = useState<string | null>(null);
+  const [quickStatusErrorRowKey, setQuickStatusErrorRowKey] = useState<string | null>(null);
+  const [quickStatusError, setQuickStatusError] = useState<string | null>(null);
+
+  async function quickChangeStatus(c: CaseRow, rowKey: string, status: string) {
+    setQuickStatusRowKey(rowKey);
+    setQuickStatusErrorRowKey(null);
+    setQuickStatusError(null);
+    try {
+      const res = await fetch("/api/cases/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rowIndex: c.rowIndex, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setQuickStatusErrorRowKey(rowKey);
+        setQuickStatusError(data.error || "更新失敗");
+        return;
+      }
+      await refresh();
+    } finally {
+      setQuickStatusRowKey(null);
+    }
+  }
+
   function renderCell(colKey: ColumnKey, c: CaseRow, rowKey: string): ReactNode {
     switch (colKey) {
       case "seq":
@@ -713,13 +803,35 @@ export default function CaseBoard({
             <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
             {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
             {me && (
-              <button
-                type="button"
-                className="comment-trigger"
-                onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
-              >
-                {openCommentKey === rowKey ? "取消" : "💬 留言"}
-              </button>
+              <>
+                <select
+                  className="quick-status-select"
+                  value=""
+                  disabled={quickStatusRowKey === rowKey}
+                  onChange={(e) => {
+                    if (e.target.value) quickChangeStatus(c, rowKey, e.target.value);
+                  }}
+                >
+                  <option value="">
+                    {quickStatusRowKey === rowKey ? "更新中..." : "變更狀態..."}
+                  </option>
+                  {WRITABLE_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                {quickStatusErrorRowKey === rowKey && quickStatusError && (
+                  <div className="comment-error">{quickStatusError}</div>
+                )}
+                <button
+                  type="button"
+                  className="comment-trigger"
+                  onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
+                >
+                  {openCommentKey === rowKey ? "取消" : "💬 留言"}
+                </button>
+              </>
             )}
           </td>
         );
@@ -992,6 +1104,11 @@ export default function CaseBoard({
 
       <div className="table-wrap">
         <table>
+          <colgroup>
+            {columnOrder.map((colKey) => (
+              <col key={colKey} style={{ width: columnWidths[colKey] }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               {columnOrder.map((colKey) => {
@@ -1007,16 +1124,25 @@ export default function CaseBoard({
                     draggedColumnRef.current = null;
                   },
                 };
+                const resizeHandle = (
+                  <span
+                    className="col-resize-handle"
+                    draggable={false}
+                    onMouseDown={(e) => startColumnResize(colKey, e)}
+                  />
+                );
                 if (colKey === "date") {
                   return (
                     <th key={colKey} className="sortable draggable-col" onClick={toggleDateSort} {...dragProps}>
                       日期 {dateSort === "desc" ? "↓新到舊" : dateSort === "asc" ? "↑舊到新" : "↕"}
+                      {resizeHandle}
                     </th>
                   );
                 }
                 return (
                   <th key={colKey} className="draggable-col" {...dragProps}>
                     {COLUMN_LABELS[colKey]}
+                    {resizeHandle}
                   </th>
                 );
               })}

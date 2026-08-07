@@ -252,7 +252,7 @@ td.collapse-toggle:hover {
 
 table {
   width: 100%;
-  min-width: 1300px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
@@ -287,6 +287,21 @@ th.draggable-col:hover {
 
 th.draggable-col:active {
   cursor: grabbing;
+}
+
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 6;
+}
+
+.col-resize-handle:hover {
+  background: var(--accent);
+  opacity: 0.5;
 }
 
 tr.overdue td {
@@ -486,6 +501,24 @@ tr.overdue td {
   font-size: 0.75rem;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.quick-status-select {
+  display: block;
+  margin-top: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.quick-status-select:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .comment-trigger:hover {
