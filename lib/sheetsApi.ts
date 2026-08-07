@@ -115,20 +115,29 @@ async function getSheetContext(): Promise<SheetContext> {
 }
 
 async function getCellValue(ctx: SheetContext, column: string, rowIndex: number): Promise<string> {
-  const range = `${encodeURIComponent(ctx.title)}!${column}${rowIndex}`;
+  const rawRange = `${ctx.title}!${column}${rowIndex}`;
   const res = await ctx.client.request<ValuesResponse>({
-    url: `https://sheets.googleapis.com/v4/spreadsheets/${ctx.spreadsheetId}/values/${range}`,
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${ctx.spreadsheetId}/values/${encodeURIComponent(
+      rawRange
+    )}`,
   });
   return res.data.values?.[0]?.[0] ?? "";
 }
 
 async function setCellValue(ctx: SheetContext, column: string, rowIndex: number, value: string): Promise<void> {
-  const range = `${encodeURIComponent(ctx.title)}!${column}${rowIndex}`;
+  // The `range` in the request body must be the literal (unencoded) A1
+  // notation — only the URL path segment needs percent-encoding. Reusing
+  // the encoded string in both spots makes the Sheets API reject the call
+  // with a "does not match value's range" error whenever the tab name
+  // contains a space.
+  const rawRange = `${ctx.title}!${column}${rowIndex}`;
   await ctx.client.request({
-    url: `https://sheets.googleapis.com/v4/spreadsheets/${ctx.spreadsheetId}/values/${range}`,
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${ctx.spreadsheetId}/values/${encodeURIComponent(
+      rawRange
+    )}`,
     method: "PUT",
     params: { valueInputOption: "USER_ENTERED" },
-    data: { range, values: [[value]] },
+    data: { range: rawRange, values: [[value]] },
   });
 }
 
