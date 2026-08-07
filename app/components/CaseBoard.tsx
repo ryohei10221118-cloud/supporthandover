@@ -334,6 +334,215 @@ function MultiSelect({
   );
 }
 
+// --- Light/dark mode + accent color picker ---
+// Index 3 in both shade lists is the exact color this app already shipped
+// with, so a first-time visitor (nothing in localStorage yet) sees a
+// pixel-identical page — the picker only changes anything once someone
+// actually opens it.
+type ThemeMode = "light" | "dark";
+
+interface ShadeOption {
+  key: string;
+  label: string;
+  bg: string;
+  surface: string;
+}
+
+const LIGHT_SHADES: ShadeOption[] = [
+  { key: "pure", label: "純白", bg: "#ffffff", surface: "#ffffff" },
+  { key: "faint", label: "淡灰", bg: "#fbfbfc", surface: "#ffffff" },
+  { key: "pale", label: "淺灰", bg: "#f1f2f4", surface: "#ffffff" },
+  { key: "gray", label: "灰階", bg: "#f7f8fa", surface: "#ffffff" },
+];
+
+const DARK_SHADES: ShadeOption[] = [
+  { key: "black", label: "純黑", bg: "#000000", surface: "#121212" },
+  { key: "graphite", label: "石墨", bg: "#17181c", surface: "#1d1f24" },
+  { key: "charcoal", label: "深灰", bg: "#1a1c21", surface: "#22252b" },
+  { key: "iron", label: "鐵灰", bg: "#14161a", surface: "#1d2026" },
+];
+
+const DEFAULT_SHADE_INDEX = 3;
+
+interface AccentFamily {
+  key: string;
+  light: string;
+  dark: string;
+}
+
+// "blue" matches this app's original --accent values exactly for both
+// modes, so it stays the default until someone explicitly picks another.
+const ACCENT_FAMILIES: AccentFamily[] = [
+  { key: "red", light: "#dc2626", dark: "#f87171" },
+  { key: "orange", light: "#ea580c", dark: "#fb923c" },
+  { key: "yellow", light: "#ca8a04", dark: "#facc15" },
+  { key: "green", light: "#16a34a", dark: "#4ade80" },
+  { key: "teal", light: "#0d9488", dark: "#2dd4bf" },
+  { key: "cyan", light: "#0891b2", dark: "#22d3ee" },
+  { key: "blue", light: "#2563eb", dark: "#5b8def" },
+  { key: "indigo", light: "#4f46e5", dark: "#818cf8" },
+  { key: "purple", light: "#9333ea", dark: "#c084fc" },
+  { key: "pink", light: "#db2777", dark: "#f472b6" },
+];
+
+const DEFAULT_ACCENT_KEY = "blue";
+const THEME_STORAGE_KEY = "t1ho_theme";
+
+interface ThemeState {
+  mode: ThemeMode;
+  shadeIndex: number;
+  accentKey: string;
+}
+
+function isThemeState(value: unknown): value is ThemeState {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    (v.mode === "light" || v.mode === "dark") &&
+    typeof v.shadeIndex === "number" &&
+    typeof v.accentKey === "string"
+  );
+}
+
+function applyTheme(state: ThemeState) {
+  const shades = state.mode === "light" ? LIGHT_SHADES : DARK_SHADES;
+  const shade = shades[state.shadeIndex] ?? shades[DEFAULT_SHADE_INDEX];
+  const accent = ACCENT_FAMILIES.find((a) => a.key === state.accentKey) ?? ACCENT_FAMILIES[6];
+  const root = document.documentElement;
+  root.style.setProperty("--bg", shade.bg);
+  root.style.setProperty("--surface", shade.surface);
+  root.style.setProperty("--accent", accent[state.mode]);
+  root.style.setProperty("--text", state.mode === "light" ? "#1a1d23" : "#e8eaed");
+  root.style.setProperty("--text-muted", state.mode === "light" ? "#6b7280" : "#9aa0a8");
+  root.style.setProperty("--border", state.mode === "light" ? "#e2e5ea" : "#2c303a");
+  root.style.setProperty("--overdue", state.mode === "light" ? "#dc2626" : "#f87171");
+  root.style.setProperty("--overdue-bg", state.mode === "light" ? "#fef2f2" : "#3a1d1d");
+  root.dataset.theme = state.mode;
+}
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
+    </svg>
+  );
+}
+
+function ThemePicker() {
+  const [state, setState] = useState<ThemeState | null>(null);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let initial: ThemeState;
+    try {
+      const raw = localStorage.getItem(THEME_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      initial = isThemeState(parsed)
+        ? parsed
+        : {
+            mode: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+            shadeIndex: DEFAULT_SHADE_INDEX,
+            accentKey: DEFAULT_ACCENT_KEY,
+          };
+    } catch {
+      initial = { mode: "light", shadeIndex: DEFAULT_SHADE_INDEX, accentKey: DEFAULT_ACCENT_KEY };
+    }
+    setState(initial);
+    applyTheme(initial);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function update(patch: Partial<ThemeState>) {
+    setState((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      applyTheme(next);
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore write failures (private browsing, storage full, etc.)
+      }
+      return next;
+    });
+  }
+
+  if (!state) return null;
+
+  const shades = state.mode === "light" ? LIGHT_SHADES : DARK_SHADES;
+  const currentAccent = ACCENT_FAMILIES.find((a) => a.key === state.accentKey) ?? ACCENT_FAMILIES[6];
+
+  return (
+    <div className="theme-picker" ref={rootRef}>
+      <button
+        type="button"
+        className="theme-toggle-btn"
+        onClick={() => update({ mode: state.mode === "light" ? "dark" : "light" })}
+        aria-label="切換亮/暗模式"
+        title="切換亮/暗模式"
+      >
+        {state.mode === "light" ? <SunIcon /> : <MoonIcon />}
+      </button>
+      <button
+        type="button"
+        className="theme-swatch-btn"
+        style={{ background: currentAccent[state.mode] }}
+        onClick={() => setOpen((o) => !o)}
+        aria-label="調整配色"
+        title="調整配色"
+      />
+      {open && (
+        <div className="theme-menu">
+          <div className="theme-menu-label">灰階</div>
+          <div className="theme-shade-row">
+            {shades.map((shade, i) => (
+              <button
+                key={shade.key}
+                type="button"
+                className={`theme-shade-chip${state.shadeIndex === i ? " selected" : ""}`}
+                onClick={() => update({ shadeIndex: i })}
+              >
+                <span className="theme-shade-swatch" style={{ background: shade.bg }} />
+                {shade.label}
+              </button>
+            ))}
+          </div>
+          <div className="theme-menu-label">主色</div>
+          <div className="theme-accent-row">
+            {ACCENT_FAMILIES.map((a) => (
+              <button
+                key={a.key}
+                type="button"
+                className={`theme-accent-swatch${state.accentKey === a.key ? " selected" : ""}`}
+                style={{ background: a[state.mode] }}
+                onClick={() => update({ accentKey: a.key })}
+                aria-label={a.key}
+                title={a.key}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CaseBoard({
   initialCases,
   initialSource,
@@ -800,8 +1009,10 @@ export default function CaseBoard({
       case "status":
         return (
           <td key={colKey}>
-            <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-            {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+            <div className="status-badges">
+              <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
+              {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+            </div>
             {me && (
               <>
                 <select
@@ -939,7 +1150,7 @@ export default function CaseBoard({
     checkForUpdates();
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") checkForUpdates();
-    }, 5 * 60 * 1000);
+    }, 30 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -962,53 +1173,59 @@ export default function CaseBoard({
         </div>
       )}
 
-      {authChecked && (
-        <div className="login-bar">
-          {me ? (
-            <>
-              <span>已登入：{me.name}</span>
-              <button type="button" className="link-btn" onClick={logout}>
-                登出
-              </button>
-            </>
-          ) : authStage === "email" ? (
-            <>
-              <input
-                type="email"
-                list="saved-emails"
-                placeholder="公司信箱（留言/改狀態需要驗證）"
-                value={authEmail}
-                onChange={(e) => setAuthEmail(e.target.value)}
-              />
-              <datalist id="saved-emails">
-                {savedEmails.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
-              <button type="button" onClick={requestAuthCode} disabled={authLoading || !authEmail}>
-                {authLoading ? "發送中..." : "取得驗證碼"}
-              </button>
-            </>
-          ) : (
-            <>
-              <input
-                type="text"
-                className="code-input"
-                placeholder="輸入驗證碼"
-                value={authCode}
-                onChange={(e) => setAuthCode(e.target.value)}
-              />
-              <button type="button" onClick={verifyAuthCode} disabled={authLoading || !authCode}>
-                {authLoading ? "驗證中..." : "驗證"}
-              </button>
-              <button type="button" className="link-btn" onClick={() => setAuthStage("email")}>
-                重新輸入信箱
-              </button>
-            </>
-          )}
-          {authError && <span className="login-error">{authError}</span>}
-        </div>
-      )}
+      <div className="top-bar">
+        <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
+          {loading ? "更新中..." : "重新整理"}
+        </button>
+        <ThemePicker />
+        {authChecked && (
+          <>
+            {me ? (
+              <>
+                <span>已登入：{me.name}</span>
+                <button type="button" className="link-btn" onClick={logout}>
+                  登出
+                </button>
+              </>
+            ) : authStage === "email" ? (
+              <>
+                <input
+                  type="email"
+                  list="saved-emails"
+                  placeholder="公司信箱（留言/改狀態需要驗證）"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                />
+                <datalist id="saved-emails">
+                  {savedEmails.map((e) => (
+                    <option key={e} value={e} />
+                  ))}
+                </datalist>
+                <button type="button" onClick={requestAuthCode} disabled={authLoading || !authEmail}>
+                  {authLoading ? "發送中..." : "取得驗證碼"}
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  className="code-input"
+                  placeholder="輸入驗證碼"
+                  value={authCode}
+                  onChange={(e) => setAuthCode(e.target.value)}
+                />
+                <button type="button" onClick={verifyAuthCode} disabled={authLoading || !authCode}>
+                  {authLoading ? "驗證中..." : "驗證"}
+                </button>
+                <button type="button" className="link-btn" onClick={() => setAuthStage("email")}>
+                  重新輸入信箱
+                </button>
+              </>
+            )}
+            {authError && <span className="login-error">{authError}</span>}
+          </>
+        )}
+      </div>
 
       <div className="summary">
         <div className="stat">
@@ -1097,9 +1314,6 @@ export default function CaseBoard({
           />
           <span className="result-count">篩選出 {filtered.length} 筆</span>
         </div>
-        <button className="refresh-btn" onClick={refresh} disabled={loading}>
-          {loading ? "更新中..." : "重新整理"}
-        </button>
       </div>
 
       <div className="table-wrap">

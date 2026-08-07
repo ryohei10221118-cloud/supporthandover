@@ -140,23 +140,24 @@ h1 {
 .update-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   background: #eff6ff;
   border: 1px solid var(--accent);
   color: var(--accent);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 0.85rem;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.75rem;
   margin-bottom: 16px;
+  width: fit-content;
 }
 
 .update-banner button {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: white;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 0.7rem;
   cursor: pointer;
 }
 
@@ -308,6 +309,13 @@ tr.overdue td {
   background: var(--overdue-bg);
 }
 
+.status-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -327,7 +335,6 @@ tr.overdue td {
 .badge.overdue-tag {
   background: var(--overdue);
   color: white;
-  margin-left: 6px;
 }
 
 .note-cell {
@@ -420,7 +427,7 @@ tr.overdue td {
   border-color: var(--accent);
 }
 
-.login-bar {
+.top-bar {
   position: absolute;
   top: 32px;
   right: 20px;
@@ -429,12 +436,12 @@ tr.overdue td {
   gap: 10px;
   flex-wrap: nowrap;
   justify-content: flex-end;
-  max-width: min(560px, calc(100vw - 40px));
+  max-width: min(680px, calc(100vw - 40px));
   font-size: 0.85rem;
 }
 
 @media (max-width: 900px) {
-  .login-bar {
+  .top-bar {
     position: static;
     max-width: none;
     margin: 12px 0 16px;
@@ -443,7 +450,7 @@ tr.overdue td {
   }
 }
 
-.login-bar input {
+.top-bar input {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -453,12 +460,12 @@ tr.overdue td {
   min-width: 220px;
 }
 
-.login-bar input.code-input {
+.top-bar input.code-input {
   min-width: 110px;
   width: 110px;
 }
 
-.login-bar button {
+.top-bar button {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -468,9 +475,116 @@ tr.overdue td {
   cursor: pointer;
 }
 
-.login-bar button:disabled {
+.top-bar button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.theme-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.top-bar .theme-toggle-btn,
+.top-bar .theme-swatch-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.top-bar .theme-swatch-btn {
+  border-width: 2px;
+}
+
+.theme-toggle-btn:hover,
+.theme-swatch-btn:hover {
+  border-color: var(--accent);
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  width: 230px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.theme-menu-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+}
+
+.theme-shade-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.theme-shade-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.theme-shade-chip.selected {
+  border: 2px solid var(--text);
+  padding: 4px 7px;
+}
+
+.theme-shade-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  flex-shrink: 0;
+}
+
+.theme-accent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-accent-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.theme-accent-swatch.selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
 .link-btn {
