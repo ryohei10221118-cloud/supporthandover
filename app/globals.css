@@ -260,6 +260,18 @@ tr.overdue td {
   -webkit-box-orient: vertical;
 }
 
+.reply-entry {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.reply-entry:last-child {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
 .note-toggle {
   display: block;
   margin-top: 4px;

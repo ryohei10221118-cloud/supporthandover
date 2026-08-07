@@ -60,6 +60,117 @@ function ClampedCell({
   );
 }
 
+// Matches entries this tool itself wrote (see app/api/cases/comment/route.ts):
+// "MM/DD HH:MM name" on the first line, then the message body. Only entries
+// whose name matches the logged-in user's own name are offered for editing.
+const OWN_ENTRY_RE = /^(\d{2}\/\d{2} \d{2}:\d{2}) ([^\n:]+)\n([\s\S]*)$/;
+
+function parseOwnEntry(entry: string, myName: string): { message: string } | null {
+  const m = entry.match(OWN_ENTRY_RE);
+  if (!m) return null;
+  const [, , name, rest] = m;
+  if (name !== myName) return null;
+  // Editing replaces the whole message anyway, but don't show a stale
+  // "(已編輯 ...)" tag from a previous edit inside the textarea.
+  const message = rest.replace(/\n\(已編輯 \d{2}\/\d{2} \d{2}:\d{2}\)\s*$/, "");
+  return { message };
+}
+
+function ReplyCell({
+  reply,
+  cellKey,
+  myName,
+  expanded,
+  onToggleClamp,
+  editingKey,
+  editDraft,
+  onEditDraftChange,
+  editSubmitting,
+  editError,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
+}: {
+  reply: string;
+  cellKey: string;
+  myName: string | null;
+  expanded: Set<string>;
+  onToggleClamp: (key: string) => void;
+  editingKey: string | null;
+  editDraft: string;
+  onEditDraftChange: (v: string) => void;
+  editSubmitting: boolean;
+  editError: string | null;
+  onStartEdit: (key: string, message: string) => void;
+  onCancelEdit: () => void;
+  onSubmitEdit: (originalEntry: string) => void;
+}) {
+  const entries = reply.trim() ? reply.split(/\n\n+/) : [];
+  const isLong = reply.length > 120 || reply.split("\n").length > 3;
+  const isExpanded = expanded.has(cellKey);
+
+  if (entries.length === 0) return <td className="note-cell" />;
+
+  return (
+    <td className="note-cell">
+      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
+        {entries.map((entry, i) => {
+          const entryKey = `${cellKey}-${i}`;
+          const own = myName ? parseOwnEntry(entry, myName) : null;
+          const isEditingThis = editingKey === entryKey;
+
+          return (
+            <div key={entryKey} className="reply-entry">
+              {isEditingThis ? (
+                <>
+                  <textarea
+                    className="comment-textarea"
+                    value={editDraft}
+                    onChange={(e) => onEditDraftChange(e.target.value)}
+                    rows={3}
+                  />
+                  <div className="comment-actions">
+                    <button
+                      type="button"
+                      className="comment-submit"
+                      disabled={editSubmitting}
+                      onClick={() => onSubmitEdit(entry)}
+                    >
+                      {editSubmitting ? "儲存中..." : "儲存"}
+                    </button>
+                    <button type="button" className="link-btn" onClick={onCancelEdit}>
+                      取消
+                    </button>
+                  </div>
+                  {editError && <div className="comment-error">{editError}</div>}
+                </>
+              ) : (
+                <>
+                  {entry}
+                  {own && (
+                    <button
+                      type="button"
+                      className="note-toggle"
+                      onClick={() => onStartEdit(entryKey, own.message)}
+                    >
+                      ✎ 編輯
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {isLong && (
+        <button type="button" className="note-toggle" onClick={() => onToggleClamp(cellKey)}>
+          {isExpanded ? "▲ Show less" : "⋯ Show more"}
+        </button>
+      )}
+    </td>
+  );
+}
+
 function MultiSelect({
   allLabel,
   options,
@@ -360,6 +471,50 @@ export default function CaseBoard({
     }
   }
 
+  // --- Editing one's own previous comment ---
+  const [editingEntryKey, setEditingEntryKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEdit(key: string, message: string) {
+    setEditingEntryKey(key);
+    setEditDraft(message);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingEntryKey(null);
+    setEditDraft("");
+    setEditError(null);
+  }
+
+  async function submitEdit(c: CaseRow, originalEntry: string) {
+    if (!editDraft.trim()) {
+      setEditError("請輸入內容");
+      return;
+    }
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      const res = await fetch("/api/cases/comment/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rowIndex: c.rowIndex, originalEntry, newMessage: editDraft.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditError(data.error || "更新失敗");
+        return;
+      }
+      setEditingEntryKey(null);
+      setEditDraft("");
+      await refresh();
+    } finally {
+      setEditSubmitting(false);
+    }
+  }
+
   function renderRow(c: CaseRow, key: string) {
     return (
       <Fragment key={key}>
@@ -375,7 +530,21 @@ export default function CaseBoard({
           <td>{c.cs}</td>
           <ClampedCell text={c.op} cellKey={`${key}-op`} expanded={expandedNotes} onToggle={toggleNote} />
           <ClampedCell text={c.note} cellKey={`${key}-note`} expanded={expandedNotes} onToggle={toggleNote} />
-          <ClampedCell text={c.reply} cellKey={`${key}-reply`} expanded={expandedNotes} onToggle={toggleNote} />
+          <ReplyCell
+            reply={c.reply}
+            cellKey={`${key}-reply`}
+            myName={me?.name ?? null}
+            expanded={expandedNotes}
+            onToggleClamp={toggleNote}
+            editingKey={editingEntryKey}
+            editDraft={editDraft}
+            onEditDraftChange={setEditDraft}
+            editSubmitting={editSubmitting}
+            editError={editError}
+            onStartEdit={startEdit}
+            onCancelEdit={cancelEdit}
+            onSubmitEdit={(entry) => submitEdit(c, entry)}
+          />
           <td>
             <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
             {c.isOverdue && <span className="badge overdue-tag">逾期</span>}

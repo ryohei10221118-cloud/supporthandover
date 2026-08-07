@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { readSessionToken, displayNameFromEmail, SESSION_COOKIE } from "@/lib/auth";
-import { appendReply } from "@/lib/sheetsApi";
+import { replaceReplyEntry } from "@/lib/sheetsApi";
 
 export const dynamic = "force-dynamic";
 
-// MM/DD HH:MM in UTC+8, independent of whatever timezone the server runs in.
+// MM/DD HH:MM in UTC+8, matching app/api/cases/comment/route.ts.
 function formatTimestampUTC8(date: Date): string {
   const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
@@ -14,6 +14,11 @@ function formatTimestampUTC8(date: Date): string {
   const min = String(shifted.getUTCMinutes()).padStart(2, "0");
   return `${mm}/${dd} ${hh}:${min}`;
 }
+
+// Matches entries this tool writes: "MM/DD HH:MM name" on the first line
+// (no colon in the name — that excludes most hand-typed CS notes), then
+// the message body. The name segment must equal the editor's own name.
+const OWN_ENTRY_RE = /^(\d{2}\/\d{2} \d{2}:\d{2}) ([^\n:]+)\n([\s\S]*)$/;
 
 export async function POST(req: Request) {
   const cookieStore = await cookies();
@@ -24,23 +29,33 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const rowIndex = typeof body?.rowIndex === "number" ? body.rowIndex : null;
-  const message = typeof body?.message === "string" ? body.message.trim() : "";
+  const originalEntry = typeof body?.originalEntry === "string" ? body.originalEntry : "";
+  const newMessage = typeof body?.newMessage === "string" ? body.newMessage.trim() : "";
 
   if (!rowIndex || rowIndex < 1) {
     return NextResponse.json({ error: "案件資訊有誤" }, { status: 400 });
   }
-  if (!message) {
+  if (!newMessage) {
     return NextResponse.json({ error: "請輸入留言內容" }, { status: 400 });
   }
-  if (message.length > 2000) {
+  if (newMessage.length > 2000) {
     return NextResponse.json({ error: "留言過長(上限 2000 字)" }, { status: 400 });
   }
 
-  const name = displayNameFromEmail(session.email);
-  const entry = `${formatTimestampUTC8(new Date())} ${name}\n${message}`;
+  const match = originalEntry.match(OWN_ENTRY_RE);
+  if (!match) {
+    return NextResponse.json({ error: "無法辨識這則留言" }, { status: 400 });
+  }
+  const [, timestamp, name] = match;
+  if (name !== displayNameFromEmail(session.email)) {
+    return NextResponse.json({ error: "只能編輯自己的留言" }, { status: 403 });
+  }
 
+  const newEntry = `${timestamp} ${name}\n${newMessage}\n(已編輯 ${formatTimestampUTC8(new Date())})`;
+
+  let replaced: boolean;
   try {
-    await appendReply(rowIndex, entry);
+    replaced = await replaceReplyEntry(rowIndex, originalEntry, newEntry);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "寫入 Sheet 失敗" },
@@ -48,5 +63,9 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, entry });
+  if (!replaced) {
+    return NextResponse.json({ error: "留言內容已變更，請重新整理後再試一次" }, { status: 409 });
+  }
+
+  return NextResponse.json({ ok: true, entry: newEntry });
 }

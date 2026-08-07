@@ -157,3 +157,16 @@ export async function updateStatus(rowIndex: number, status: string): Promise<vo
   const ctx = await getSheetContext();
   await setCellValue(ctx, ctx.statusCol, rowIndex, status);
 }
+
+// Replaces one exact entry within the 回答内容 cell's stacked text with a
+// new one, leaving every other entry untouched. Returns false (instead of
+// throwing) when `oldEntry` can't be found verbatim in the current cell —
+// e.g. it changed between the page loading and this edit being submitted —
+// so the caller can ask the user to refresh rather than silently no-op.
+export async function replaceReplyEntry(rowIndex: number, oldEntry: string, newEntry: string): Promise<boolean> {
+  const ctx = await getSheetContext();
+  const current = await getCellValue(ctx, ctx.replyCol, rowIndex);
+  if (!current.includes(oldEntry)) return false;
+  await setCellValue(ctx, ctx.replyCol, rowIndex, current.replace(oldEntry, newEntry));
+  return true;
+}
