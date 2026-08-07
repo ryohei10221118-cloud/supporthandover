@@ -354,9 +354,12 @@ export default function CaseBoard({
     return { recentRows: recent, olderRows: older };
   }, [sorted]);
 
-  const openCount = cases.filter((c) => !c.isCompleted).length;
-  const completedCount = cases.filter((c) => c.isCompleted).length;
-  const overdueCount = cases.filter((c) => c.isOverdue).length;
+  // 總案件數 stays the true overall total; these three follow the current
+  // department/status/search filter so they answer "how many of what I'm
+  // looking at" instead of always describing the whole sheet.
+  const openCount = filtered.filter((c) => !c.isCompleted).length;
+  const completedCount = filtered.filter((c) => c.isCompleted).length;
+  const overdueCount = filtered.filter((c) => c.isOverdue).length;
 
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
