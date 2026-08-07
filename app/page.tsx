@@ -23,7 +23,6 @@ export default async function Home() {
 
   return (
     <main className="page">
-      <h1>T1HO case board</h1>
       <CaseBoard initialCases={initialCases} initialSource={source} initialError={error} />
     </main>
   );

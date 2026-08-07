@@ -1199,11 +1199,13 @@ export default function CaseBoard({
 
   return (
     <div>
-      <div className="top-bar">
-        <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
-          {loading ? "更新中..." : "重新整理"}
-        </button>
-        <ThemePicker />
+      <div className="page-header">
+        <h1>T1HO case board</h1>
+        <div className="top-bar">
+          <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
+            {loading ? "更新中..." : "重新整理"}
+          </button>
+          <ThemePicker />
         {authChecked && (
           <>
             {me ? (
@@ -1251,6 +1253,7 @@ export default function CaseBoard({
             {authError && <span className="login-error">{authError}</span>}
           </>
         )}
+        </div>
       </div>
 
       {source === "mock" && (
@@ -1263,10 +1266,7 @@ export default function CaseBoard({
 
       {updateAvailable && (
         <div className="update-banner">
-          <span>Sheet 有新的更新</span>
-          <button type="button" onClick={refresh} disabled={loading}>
-            {loading ? "更新中..." : "重新整理"}
-          </button>
+          <span>Sheet 有新的更新，點右上角「重新整理」查看最新資料</span>
         </div>
       )}
 
