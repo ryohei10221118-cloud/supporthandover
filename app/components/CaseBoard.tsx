@@ -76,6 +76,14 @@ function parseOwnEntry(entry: string, myName: string): { message: string } | nul
   return { message };
 }
 
+// An entry with no "MM/DD HH:MM name" header wasn't written through this
+// tool (by anyone) — it's something typed straight into the sheet, so it
+// carries no author info of its own. Label those "Support" in the UI only;
+// nothing about the sheet content itself changes.
+function hasOwnFormatHeader(entry: string): boolean {
+  return OWN_ENTRY_RE.test(entry);
+}
+
 function ReplyCell({
   reply,
   cellKey,
@@ -146,6 +154,7 @@ function ReplyCell({
                 </>
               ) : (
                 <>
+                  {!hasOwnFormatHeader(entry) && <span className="reply-support-tag">Support</span>}
                   {entry}
                   {own && (
                     <button
