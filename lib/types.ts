@@ -1,6 +1,7 @@
 export type CaseStatus = "pending" | "replied" | "Move to HO" | "Follow up" | "Closed" | string;
 
 export interface CaseRow {
+  rowIndex: number;
   seq: string;
   date: string;
   op: string;

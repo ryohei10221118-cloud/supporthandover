@@ -2,8 +2,13 @@ import "server-only";
 import { JWT } from "google-auth-library";
 import { parseCaseRows } from "./cases";
 import type { CaseRow } from "./types";
+import { findHeaderRow, buildColumnMap, columnIndexToLetter } from "./sheetSchema";
 
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
+// Full read/write scope: the reader path only ever calls values.get, but
+// the write path (appending replies, updating status) needs this broader
+// scope. The sheet itself stays private — only readable/writable by whoever
+// holds this service account's key, which we never expose to the client.
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
 export function hasServiceAccountConfig(): boolean {
   return Boolean(
@@ -64,4 +69,77 @@ export async function fetchViaSheetsApi(): Promise<CaseRow[]> {
   });
 
   return parseCaseRows(valuesRes.data.values ?? []);
+}
+
+interface SheetContext {
+  client: JWT;
+  spreadsheetId: string;
+  title: string;
+  replyCol: string;
+  statusCol: string;
+}
+
+// Re-resolves the tab title and reply/status column letters on every call.
+// This tool's write volume is low (occasional comments/status changes), so
+// the extra lookup isn't worth caching against the sheet's columns moving.
+async function getSheetContext(): Promise<SheetContext> {
+  const spreadsheetId = process.env.SHEET_ID!;
+  const client = getClient();
+  const title = await resolveSheetTitle(client, spreadsheetId);
+
+  const headerRes = await client.request<ValuesResponse>({
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+      title
+    )}!1:2`,
+  });
+  const rows = headerRes.data.values ?? [];
+  const headerIdx = findHeaderRow(rows);
+  if (headerIdx === -1) throw new Error("Could not find the header row (looking for 序列) in the sheet.");
+  const columnMap = buildColumnMap(rows[headerIdx]);
+  if (columnMap.reply === undefined || columnMap.status === undefined) {
+    throw new Error("Could not locate the 回答内容 or Status column in the sheet header.");
+  }
+
+  return {
+    client,
+    spreadsheetId,
+    title,
+    replyCol: columnIndexToLetter(columnMap.reply),
+    statusCol: columnIndexToLetter(columnMap.status),
+  };
+}
+
+async function getCellValue(ctx: SheetContext, column: string, rowIndex: number): Promise<string> {
+  const range = `${encodeURIComponent(ctx.title)}!${column}${rowIndex}`;
+  const res = await ctx.client.request<ValuesResponse>({
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${ctx.spreadsheetId}/values/${range}`,
+  });
+  return res.data.values?.[0]?.[0] ?? "";
+}
+
+async function setCellValue(ctx: SheetContext, column: string, rowIndex: number, value: string): Promise<void> {
+  const range = `${encodeURIComponent(ctx.title)}!${column}${rowIndex}`;
+  await ctx.client.request({
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${ctx.spreadsheetId}/values/${range}`,
+    method: "PUT",
+    params: { valueInputOption: "USER_ENTERED" },
+    data: { range, values: [[value]] },
+  });
+}
+
+// Appends `entry` above whatever is already in the 回答内容 cell, matching
+// the team's existing convention of stacking timestamped updates in one
+// cell — newest entry on top, separated by a blank line.
+export async function appendReply(rowIndex: number, entry: string): Promise<void> {
+  const ctx = await getSheetContext();
+  const current = await getCellValue(ctx, ctx.replyCol, rowIndex);
+  const next = current.trim() ? `${entry}\n\n${current}` : entry;
+  await setCellValue(ctx, ctx.replyCol, rowIndex, next);
+}
+
+// Restricted at the call site to "pending" / "Follow up" — this function
+// itself will write whatever string it's given, so callers must validate.
+export async function updateStatus(rowIndex: number, status: string): Promise<void> {
+  const ctx = await getSheetContext();
+  await setCellValue(ctx, ctx.statusCol, rowIndex, status);
 }

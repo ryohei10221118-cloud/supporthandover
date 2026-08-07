@@ -1,5 +1,6 @@
 import { parse } from "csv-parse/sync";
 import type { CaseRow } from "./types";
+import { HEADER_KEYWORDS, findHeaderRow, buildColumnMap } from "./sheetSchema";
 
 const OVERDUE_DAYS = 3;
 const CLOSED_STATUSES = new Set(["closed"]);
@@ -9,42 +10,6 @@ const COMPLETED_STATUSES = new Set(["replied", "closed"]);
 
 export function isCompletedStatus(status: string): boolean {
   return COMPLETED_STATUSES.has(status.trim().toLowerCase());
-}
-
-// Header keywords we look for in the sheet's header row. Position fallback
-// covers the "note" column, whose header text sits under the sheet's merged
-// instruction banner and isn't reliably readable as plain text.
-const HEADER_KEYWORDS: Record<keyof Omit<CaseRow, "isClosed" | "isCompleted" | "isOverdue" | "daysOpen">, string[]> = {
-  seq: ["序列"],
-  date: ["日期"],
-  op: ["op"],
-  note: ["问题追踪", "追踪"],
-  department: ["部门"],
-  cs: ["cs"],
-  reply: ["回答内容", "回答"],
-  status: ["status"],
-  issue: ["issue"],
-};
-
-function findHeaderRow(rows: string[][]): number {
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].some((cell) => cell.trim() === "序列")) return i;
-  }
-  return -1;
-}
-
-function buildColumnMap(header: string[]): Partial<Record<keyof typeof HEADER_KEYWORDS, number>> {
-  const map: Partial<Record<keyof typeof HEADER_KEYWORDS, number>> = {};
-  for (const [key, keywords] of Object.entries(HEADER_KEYWORDS) as [keyof typeof HEADER_KEYWORDS, string[]][]) {
-    const idx = header.findIndex((cell) =>
-      keywords.some((kw) => cell.trim().toLowerCase().includes(kw.toLowerCase()))
-    );
-    if (idx !== -1) map[key] = idx;
-  }
-  // Position fallback for the note column (D, index 3), matching the sheet
-  // layout observed in practice: seq, date, op, note, department, cs, reply, status.
-  if (map.note === undefined) map.note = 3;
-  return map;
 }
 
 function daysSince(dateStr: string): number | null {
@@ -74,7 +39,9 @@ export function parseCaseRows(rows: string[][]): CaseRow[] {
   };
 
   const cases: CaseRow[] = [];
-  for (const row of rows.slice(headerIdx + 1)) {
+  const dataRows = rows.slice(headerIdx + 1);
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
     const seq = cell(row, "seq");
     const date = cell(row, "date");
     // Skip blank template rows further down the sheet that only carry
@@ -85,8 +52,12 @@ export function parseCaseRows(rows: string[][]): CaseRow[] {
     const daysOpen = daysSince(date);
     const isClosed = CLOSED_STATUSES.has(status.trim().toLowerCase());
     const isCompleted = isCompletedStatus(status);
+    // 1-based sheet row number: headerIdx and i are 0-based array offsets
+    // into `rows`, so the actual row is two past their sum.
+    const rowIndex = headerIdx + i + 2;
 
     cases.push({
+      rowIndex,
       seq,
       date,
       op: cell(row, "op"),
