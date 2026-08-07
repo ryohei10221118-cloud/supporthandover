@@ -124,7 +124,7 @@ h1 {
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
-  padding: 7px 8px;
+  padding: 8px 10px;
   font-size: 0.85rem;
 }
 
@@ -133,7 +133,7 @@ h1 {
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
-  padding: 7px 8px;
+  padding: 8px 10px;
   font-size: 0.85rem;
 }
 
@@ -443,25 +443,18 @@ button.badge:disabled {
 }
 
 .top-bar {
-  position: absolute;
-  top: 32px;
-  right: 20px;
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: min(680px, calc(100vw - 40px));
+  margin-bottom: 16px;
   font-size: 0.85rem;
 }
 
 @media (max-width: 900px) {
   .top-bar {
-    position: static;
-    max-width: none;
-    margin: 12px 0 16px;
     justify-content: flex-start;
-    flex-wrap: wrap;
   }
 }
 

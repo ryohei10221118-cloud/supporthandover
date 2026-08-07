@@ -348,17 +348,21 @@ interface ShadeOption {
   surface: string;
 }
 
+// "gray"/"iron" (index 3 in each list) are this app's original --bg/--surface
+// values, kept byte-for-byte so a first-time visitor sees no change. The
+// other three intentionally tint --surface too (not just --bg) so picking
+// them has a visible effect on the cards/table, not just the page margins.
 const LIGHT_SHADES: ShadeOption[] = [
   { key: "pure", label: "純白", bg: "#ffffff", surface: "#ffffff" },
-  { key: "faint", label: "淡灰", bg: "#fbfbfc", surface: "#ffffff" },
-  { key: "pale", label: "淺灰", bg: "#f1f2f4", surface: "#ffffff" },
+  { key: "faint", label: "淡灰", bg: "#f6f7f8", surface: "#fbfbfc" },
+  { key: "pale", label: "淺灰", bg: "#e9ebef", surface: "#f4f5f7" },
   { key: "gray", label: "灰階", bg: "#f7f8fa", surface: "#ffffff" },
 ];
 
 const DARK_SHADES: ShadeOption[] = [
-  { key: "black", label: "純黑", bg: "#000000", surface: "#121212" },
-  { key: "graphite", label: "石墨", bg: "#17181c", surface: "#1d1f24" },
-  { key: "charcoal", label: "深灰", bg: "#1a1c21", surface: "#22252b" },
+  { key: "black", label: "純黑", bg: "#000000", surface: "#141414" },
+  { key: "graphite", label: "石墨", bg: "#1b1c20", surface: "#242529" },
+  { key: "charcoal", label: "深灰", bg: "#22252b", surface: "#2c2f36" },
   { key: "iron", label: "鐵灰", bg: "#14161a", surface: "#1d2026" },
 ];
 
@@ -1010,6 +1014,13 @@ export default function CaseBoard({
       case "status": {
         const isEditingStatus = editingStatusRowKey === rowKey;
         const isSubmittingStatus = quickStatusRowKey === rowKey;
+        // If the current status is already one of the two writable ones,
+        // only offer the other — no point listing the status it already is.
+        // Anything else (replied/closed/Move to HO/...) offers both.
+        const currentStatusNormalized = c.status.trim().toLowerCase();
+        const availableStatuses = WRITABLE_STATUSES.some((s) => s.toLowerCase() === currentStatusNormalized)
+          ? WRITABLE_STATUSES.filter((s) => s.toLowerCase() !== currentStatusNormalized)
+          : WRITABLE_STATUSES;
         return (
           <td key={colKey}>
             {isEditingStatus ? (
@@ -1035,7 +1046,7 @@ export default function CaseBoard({
                 <option value="" disabled>
                   {c.status || "選擇狀態"}
                 </option>
-                {WRITABLE_STATUSES.map((s) => (
+                {availableStatuses.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
@@ -1183,23 +1194,6 @@ export default function CaseBoard({
 
   return (
     <div>
-      {source === "mock" && (
-        <div className="banner">
-          {error
-            ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
-            : "尚未設定Sheet連結，目前顯示的是範例資料。"}
-        </div>
-      )}
-
-      {updateAvailable && (
-        <div className="update-banner">
-          <span>Sheet 有新的更新</span>
-          <button type="button" onClick={refresh} disabled={loading}>
-            {loading ? "更新中..." : "重新整理"}
-          </button>
-        </div>
-      )}
-
       <div className="top-bar">
         <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
           {loading ? "更新中..." : "重新整理"}
@@ -1253,6 +1247,23 @@ export default function CaseBoard({
           </>
         )}
       </div>
+
+      {source === "mock" && (
+        <div className="banner">
+          {error
+            ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
+            : "尚未設定Sheet連結，目前顯示的是範例資料。"}
+        </div>
+      )}
+
+      {updateAvailable && (
+        <div className="update-banner">
+          <span>Sheet 有新的更新</span>
+          <button type="button" onClick={refresh} disabled={loading}>
+            {loading ? "更新中..." : "重新整理"}
+          </button>
+        </div>
+      )}
 
       <div className="summary">
         <div className="stat">
