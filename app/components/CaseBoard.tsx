@@ -735,6 +735,11 @@ export default function CaseBoard({
   const totalCount = cases.filter((c) => isValidDept(c.department)).length;
   const openCount = filtered.filter((c) => !c.isCompleted && isValidDept(c.department)).length;
   const completedCount = filtered.filter((c) => c.isCompleted && isValidDept(c.department)).length;
+  // Same recognized-department scope as the four stats above, so "篩選出 X
+  // 筆" doesn't show a bigger number than 總案件數 when nothing else is
+  // filtered — rows with an unrecognized department still show in the
+  // table below, they just aren't counted here or in the stats.
+  const filteredValidCount = filtered.filter((c) => isValidDept(c.department)).length;
   const overdueCount = filtered.filter((c) => c.isOverdue && isValidDept(c.department)).length;
 
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -1350,7 +1355,7 @@ export default function CaseBoard({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <span className="result-count">篩選出 {filtered.length} 筆</span>
+          <span className="result-count">篩選出 {filteredValidCount} 筆</span>
         </div>
       </div>
 
