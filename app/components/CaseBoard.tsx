@@ -1357,6 +1357,7 @@ export default function CaseBoard({
             </select>
             <input
               type="date"
+              lang="en-US"
               value={dateFrom}
               onChange={(e) => {
                 setDateFrom(e.target.value);
@@ -1367,6 +1368,7 @@ export default function CaseBoard({
             <span>至</span>
             <input
               type="date"
+              lang="en-US"
               value={dateTo}
               onChange={(e) => {
                 setDateTo(e.target.value);
