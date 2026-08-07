@@ -8,7 +8,13 @@ import { findHeaderRow, buildColumnMap, columnIndexToLetter } from "./sheetSchem
 // the write path (appending replies, updating status) needs this broader
 // scope. The sheet itself stays private — only readable/writable by whoever
 // holds this service account's key, which we never expose to the client.
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+// drive.metadata.readonly is only used to poll the file's modifiedTime for
+// the "there's a new update" banner — it doesn't grant any new access
+// beyond what sharing the sheet with this service account already implies.
+const SCOPES = [
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+];
 
 export function hasServiceAccountConfig(): boolean {
   return Boolean(
@@ -207,9 +213,22 @@ export async function replaceReplyEntry(rowIndex: number, oldEntry: string, newE
       latest.includes(oldEntry)
         ? latest.replace(oldEntry, newEntry)
         : latest.trim()
-        ? `${newEntry}\n\n${latest}`
+        ? `${latest}\n\n${newEntry}`
         : newEntry,
     newEntry
   );
   return true;
+}
+
+// Used to detect "the sheet changed since I last looked" without pulling
+// all the row data — Drive treats a Sheet as a file, so its modifiedTime
+// updates on any edit (ours or a human's) regardless of which cell changed.
+export async function getSheetModifiedTime(): Promise<string | null> {
+  if (!hasServiceAccountConfig()) return null;
+  const client = getClient();
+  const spreadsheetId = process.env.SHEET_ID!;
+  const res = await client.request<{ modifiedTime?: string }>({
+    url: `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=modifiedTime`,
+  });
+  return res.data.modifiedTime ?? null;
 }

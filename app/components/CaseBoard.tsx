@@ -359,7 +359,30 @@ export default function CaseBoard({
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [datePreset, setDatePreset] = useState("all");
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
+
+  function applyDatePreset(preset: string) {
+    setDatePreset(preset);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    const today = new Date();
+    if (preset === "all") {
+      setDateFrom("");
+      setDateTo("");
+    } else if (preset === "7" || preset === "30") {
+      const from = new Date(today);
+      from.setDate(from.getDate() - (Number(preset) - 1));
+      setDateFrom(fmt(from));
+      setDateTo(fmt(today));
+    } else if (preset === "thisMonth") {
+      setDateFrom(fmt(new Date(today.getFullYear(), today.getMonth(), 1)));
+      setDateTo(fmt(today));
+    } else if (preset === "lastMonth") {
+      setDateFrom(fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1)));
+      setDateTo(fmt(new Date(today.getFullYear(), today.getMonth(), 0)));
+    }
+    // "custom": leave dateFrom/dateTo untouched, user is typing them directly
+  }
 
   const departments: string[] = Array.from(OFFICIAL_DEPARTMENTS);
   const statuses = useMemo(() => {
@@ -761,10 +784,52 @@ export default function CaseBoard({
       setCases(data.cases);
       setSource(data.source);
       setError(data.error);
+      setUpdateAvailable(false);
+      // Re-sync the modified-time baseline so this refresh doesn't
+      // immediately re-trigger the "there's an update" banner.
+      try {
+        const modRes = await fetch("/api/cases/modified", { cache: "no-store" });
+        const modData = await modRes.json();
+        if (modData.modifiedTime) lastKnownModifiedRef.current = modData.modifiedTime;
+      } catch {
+        // ignore — worst case we just re-check on the next interval
+      }
     } finally {
       setLoading(false);
     }
   }
+
+  // --- "Sheet changed since you last looked" banner ---
+  // Polls the sheet's Drive file modifiedTime (cheap — no row data pulled)
+  // rather than silently swapping data underneath an in-progress filter,
+  // scroll position, or open comment/edit panel.
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const lastKnownModifiedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    async function checkForUpdates() {
+      try {
+        const res = await fetch("/api/cases/modified", { cache: "no-store" });
+        const data = await res.json();
+        if (!data.modifiedTime) return;
+        if (lastKnownModifiedRef.current === null) {
+          lastKnownModifiedRef.current = data.modifiedTime;
+          return;
+        }
+        if (data.modifiedTime !== lastKnownModifiedRef.current) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // transient network hiccup — try again next interval
+      }
+    }
+
+    checkForUpdates();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") checkForUpdates();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div>
@@ -773,6 +838,15 @@ export default function CaseBoard({
           {error
             ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
             : "尚未設定Sheet連結，目前顯示的是範例資料。"}
+        </div>
+      )}
+
+      {updateAvailable && (
+        <div className="update-banner">
+          <span>Sheet 有新的更新</span>
+          <button type="button" onClick={refresh} disabled={loading}>
+            {loading ? "更新中..." : "重新整理"}
+          </button>
         </div>
       )}
 
@@ -858,17 +932,35 @@ export default function CaseBoard({
             onChange={setSelectedStatuses}
           />
           <div className="date-range">
+            <select
+              value={datePreset}
+              onChange={(e) => applyDatePreset(e.target.value)}
+              aria-label="日期範圍快速選擇"
+            >
+              <option value="all">全部時間</option>
+              <option value="7">最近7天</option>
+              <option value="30">最近30天</option>
+              <option value="thisMonth">本月</option>
+              <option value="lastMonth">上月</option>
+              <option value="custom">自訂區間</option>
+            </select>
             <input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setDatePreset("custom");
+              }}
               aria-label="起始日期"
             />
             <span>至</span>
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setDatePreset("custom");
+              }}
               aria-label="結束日期"
             />
             {(dateFrom || dateTo) && (
@@ -878,6 +970,7 @@ export default function CaseBoard({
                 onClick={() => {
                   setDateFrom("");
                   setDateTo("");
+                  setDatePreset("all");
                 }}
               >
                 清除
