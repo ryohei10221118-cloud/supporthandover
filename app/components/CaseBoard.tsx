@@ -52,7 +52,7 @@ const STRINGS = {
     en: "No Sheet link configured yet — showing sample data.",
   },
   updateNotice: {
-    zh: (seqs: string) => `Sheet 有新的更新${seqs ? `（${seqs}）` : ""}，請重新整理`,
+    zh: (seqs: string) => `表格有更新${seqs ? `（${seqs}）` : ""}，請重新整理`,
     en: (seqs: string) => `Sheet updated${seqs ? ` (${seqs})` : ""}, please refresh`,
   },
   totalCases: { zh: "總案件數", en: "Total cases" },
