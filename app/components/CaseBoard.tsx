@@ -14,6 +14,108 @@ import type { CaseRow } from "@/lib/types";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
 
+// --- UI language (app-authored text only — sheet data, status/department
+// values, and server-side error strings are unaffected) ---
+type Lang = "zh" | "en";
+const LANG_STORAGE_KEY = "t1ho_lang";
+
+type StringEntry = string | ((...args: never[]) => string);
+const STRINGS = {
+  refresh: { zh: "重新整理", en: "Refresh" },
+  refreshing: { zh: "更新中...", en: "Refreshing..." },
+  updating: { zh: "更新中...", en: "Updating..." },
+  toggleLang: { zh: "EN", en: "中文" },
+  toggleTheme: { zh: "切換亮/暗模式", en: "Toggle light/dark mode" },
+  adjustColor: { zh: "調整配色", en: "Adjust color" },
+  grayscale: { zh: "灰階", en: "Grayscale" },
+  accentColor: { zh: "主色", en: "Accent color" },
+  loggedInAs: { zh: (name: string) => `已登入：${name}`, en: (name: string) => `Logged in: ${name}` },
+  logout: { zh: "登出", en: "Log out" },
+  emailPlaceholder: {
+    zh: "公司信箱（留言/改狀態需要驗證）",
+    en: "Company email (required to comment/change status)",
+  },
+  getCode: { zh: "取得驗證碼", en: "Get code" },
+  sending: { zh: "發送中...", en: "Sending..." },
+  codePlaceholder: { zh: "輸入驗證碼", en: "Enter code" },
+  verify: { zh: "驗證", en: "Verify" },
+  verifying: { zh: "驗證中...", en: "Verifying..." },
+  reenterEmail: { zh: "重新輸入信箱", en: "Re-enter email" },
+  sendFailed: { zh: "發送失敗", en: "Failed to send" },
+  verifyFailed: { zh: "驗證失敗", en: "Verification failed" },
+  mockBannerError: {
+    zh: (err: string) => `目前無法讀取Sheet資料，顯示的是範例資料。原因：${err}`,
+    en: (err: string) => `Unable to read Sheet data right now, showing sample data. Reason: ${err}`,
+  },
+  mockBannerNoSheet: {
+    zh: "尚未設定Sheet連結，目前顯示的是範例資料。",
+    en: "No Sheet link configured yet — showing sample data.",
+  },
+  updateNotice: {
+    zh: (seqs: string) => `Sheet 有新的更新${seqs ? `（${seqs}）` : ""}，請重新整理`,
+    en: (seqs: string) => `Sheet updated${seqs ? ` (${seqs})` : ""}, please refresh`,
+  },
+  totalCases: { zh: "總案件數", en: "Total cases" },
+  openCases: { zh: "待追蹤(未完成)", en: "Open (not completed)" },
+  completedCases: { zh: "已完成", en: "Completed" },
+  overdueCases: { zh: "逾期(超過3天未完成)", en: "Overdue (>3 days open)" },
+  allDepartments: { zh: "全部部門", en: "All departments" },
+  allStatuses: { zh: "全部狀態", en: "All statuses" },
+  nSelected: { zh: (n: number) => `已選 ${n} 項`, en: (n: number) => `${n} selected` },
+  dateRangeLabel: { zh: "日期範圍快速選擇", en: "Date range quick select" },
+  allTime: { zh: "全部時間", en: "All time" },
+  last7Days: { zh: "最近7天", en: "Last 7 days" },
+  last30Days: { zh: "最近30天", en: "Last 30 days" },
+  thisMonth: { zh: "本月", en: "This month" },
+  lastMonth: { zh: "上月", en: "Last month" },
+  customRange: { zh: "自訂區間", en: "Custom range" },
+  startDate: { zh: "起始日期", en: "Start date" },
+  endDate: { zh: "結束日期", en: "End date" },
+  dateTo: { zh: "至", en: "to" },
+  clear: { zh: "清除", en: "Clear" },
+  searchPlaceholder: { zh: "搜尋序列 / OP / CS / 內容...", en: "Search seq / OP / CS / content..." },
+  resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
+  newestFirst: { zh: "↓新到舊", en: "↓Newest" },
+  oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
+  daysAgo: { zh: (n: number) => `${n}天前`, en: (n: number) => `${n}d ago` },
+  overdueTag: { zh: "逾期", en: "Overdue" },
+  comment: { zh: "💬 留言", en: "💬 Comment" },
+  cancel: { zh: "取消", en: "Cancel" },
+  commentPlaceholder: {
+    zh: "輸入留言，會加到「回答內容」欄位最下方",
+    en: "Type your comment — it'll be added to the bottom of 回答內容",
+  },
+  alsoUpdateStatus: { zh: "同時更新狀態：", en: "Also update status:" },
+  noChange: { zh: "不變更", en: "No change" },
+  submitting: { zh: "送出中...", en: "Submitting..." },
+  submitComment: { zh: "送出留言", en: "Submit comment" },
+  commentRequired: { zh: "請輸入留言內容", en: "Please enter a comment" },
+  submitFailed: { zh: "送出失敗", en: "Failed to submit" },
+  statusUpdateFailedAfterComment: {
+    zh: (err: string) => `留言已送出，但狀態更新失敗：${err}`,
+    en: (err: string) => `Comment submitted, but the status update failed: ${err}`,
+  },
+  saving: { zh: "儲存中...", en: "Saving..." },
+  save: { zh: "儲存", en: "Save" },
+  editContentRequired: { zh: "請輸入內容", en: "Please enter some content" },
+  updateFailed: { zh: "更新失敗", en: "Update failed" },
+  edit: { zh: "✎ 編輯", en: "✎ Edit" },
+  changeStatus: { zh: "變更狀態", en: "Change status" },
+  hideOlder: { zh: "▲ 收合", en: "▲ Hide" },
+  showOlder: { zh: "▼ 顯示", en: "▼ Show" },
+  olderRecords: { zh: (n: number) => `1個月前的紀錄(${n}筆)`, en: (n: number) => `records older than 1 month (${n})` },
+  noMatchingCases: { zh: "沒有符合條件的案件", en: "No matching cases" },
+} satisfies Record<string, Record<Lang, StringEntry>>;
+
+function t<K extends keyof typeof STRINGS>(
+  lang: Lang,
+  key: K,
+  ...args: (typeof STRINGS)[K]["en"] extends (...a: infer A) => string ? A : []
+): string {
+  const entry = STRINGS[key][lang] as StringEntry;
+  return typeof entry === "function" ? (entry as (...a: never[]) => string)(...(args as never[])) : entry;
+}
+
 // Fixed to the sheet's own 部門 dropdown list, rather than whatever
 // distinct strings happen to appear in the data (blank/legacy/typo values
 // included) — used both as the filter's option list and to scope the
@@ -39,15 +141,15 @@ type ColumnKey = "seq" | "date" | "department" | "cs" | "op" | "note" | "reply" 
 
 const DEFAULT_COLUMN_ORDER: ColumnKey[] = ["seq", "date", "department", "cs", "op", "note", "reply", "status"];
 
-const COLUMN_LABELS: Record<ColumnKey, string> = {
-  seq: "序列",
-  date: "日期",
-  department: "部門",
-  cs: "CS",
-  op: "OP",
-  note: "內容",
-  reply: "回答內容",
-  status: "狀態",
+const COLUMN_LABELS: Record<ColumnKey, Record<Lang, string>> = {
+  seq: { zh: "序列", en: "Seq" },
+  date: { zh: "日期", en: "Date" },
+  department: { zh: "部門", en: "Department" },
+  cs: { zh: "CS", en: "CS" },
+  op: { zh: "OP", en: "OP" },
+  note: { zh: "內容", en: "Note" },
+  reply: { zh: "回答內容", en: "Reply" },
+  status: { zh: "狀態", en: "Status" },
 };
 
 const COLUMN_ORDER_STORAGE_KEY = "t1ho_column_order";
@@ -222,6 +324,7 @@ function ReplyCell({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
+  lang,
 }: {
   reply: string;
   cellKey: string;
@@ -236,6 +339,7 @@ function ReplyCell({
   onStartEdit: (key: string, message: string) => void;
   onCancelEdit: () => void;
   onSubmitEdit: (originalEntry: string) => void;
+  lang: Lang;
 }) {
   const entries = reply.trim() ? reply.split(/\n\n+/) : [];
   const isLong = reply.length > 120 || reply.split("\n").length > 3;
@@ -268,10 +372,10 @@ function ReplyCell({
                       disabled={editSubmitting}
                       onClick={() => onSubmitEdit(entry)}
                     >
-                      {editSubmitting ? "儲存中..." : "儲存"}
+                      {editSubmitting ? t(lang, "saving") : t(lang, "save")}
                     </button>
                     <button type="button" className="link-btn" onClick={onCancelEdit}>
-                      取消
+                      {t(lang, "cancel")}
                     </button>
                   </div>
                   {editError && <div className="comment-error">{editError}</div>}
@@ -286,7 +390,7 @@ function ReplyCell({
                       className="note-toggle"
                       onClick={() => onStartEdit(entryKey, editable.message)}
                     >
-                      ✎ 編輯
+                      {t(lang, "edit")}
                     </button>
                   )}
                 </>
@@ -309,11 +413,18 @@ function MultiSelect({
   options,
   selected,
   onChange,
+  lang,
+  labelFor,
 }: {
   allLabel: string;
   options: string[];
   selected: string[];
   onChange: (next: string[]) => void;
+  lang: Lang;
+  // Lets a caller show a translated label for an option (e.g. the
+  // synthetic "已完成" status category) while the underlying value used
+  // for filtering/state stays the same in every language.
+  labelFor?: (opt: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -326,12 +437,14 @@ function MultiSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const display = (opt: string) => (labelFor ? labelFor(opt) : opt);
+
   const summary =
     selected.length === 0
       ? allLabel
       : selected.length === 1
-      ? selected[0]
-      : `已選 ${selected.length} 項`;
+      ? display(selected[0])
+      : t(lang, "nSelected", selected.length);
 
   function toggle(opt: string) {
     onChange(selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt]);
@@ -351,7 +464,7 @@ function MultiSelect({
           {options.map((opt) => (
             <label key={opt} className="multiselect-option">
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
-              {opt}
+              {display(opt)}
             </label>
           ))}
         </div>
@@ -369,7 +482,7 @@ type ThemeMode = "light" | "dark";
 
 interface ShadeOption {
   key: string;
-  label: string;
+  label: Record<Lang, string>;
   bg: string;
   surface: string;
 }
@@ -379,17 +492,17 @@ interface ShadeOption {
 // other three intentionally tint --surface too (not just --bg) so picking
 // them has a visible effect on the cards/table, not just the page margins.
 const LIGHT_SHADES: ShadeOption[] = [
-  { key: "pure", label: "純白", bg: "#ffffff", surface: "#ffffff" },
-  { key: "faint", label: "淡灰", bg: "#f6f7f8", surface: "#fbfbfc" },
-  { key: "pale", label: "淺灰", bg: "#e9ebef", surface: "#f4f5f7" },
-  { key: "gray", label: "灰階", bg: "#f7f8fa", surface: "#ffffff" },
+  { key: "pure", label: { zh: "純白", en: "Pure white" }, bg: "#ffffff", surface: "#ffffff" },
+  { key: "faint", label: { zh: "淡灰", en: "Faint gray" }, bg: "#f6f7f8", surface: "#fbfbfc" },
+  { key: "pale", label: { zh: "淺灰", en: "Pale gray" }, bg: "#e9ebef", surface: "#f4f5f7" },
+  { key: "gray", label: { zh: "灰階", en: "Gray" }, bg: "#f7f8fa", surface: "#ffffff" },
 ];
 
 const DARK_SHADES: ShadeOption[] = [
-  { key: "black", label: "純黑", bg: "#000000", surface: "#141414" },
-  { key: "graphite", label: "石墨", bg: "#1b1c20", surface: "#242529" },
-  { key: "charcoal", label: "深灰", bg: "#22252b", surface: "#2c2f36" },
-  { key: "iron", label: "鐵灰", bg: "#14161a", surface: "#1d2026" },
+  { key: "black", label: { zh: "純黑", en: "Pure black" }, bg: "#000000", surface: "#141414" },
+  { key: "graphite", label: { zh: "石墨", en: "Graphite" }, bg: "#1b1c20", surface: "#242529" },
+  { key: "charcoal", label: { zh: "深灰", en: "Charcoal" }, bg: "#22252b", surface: "#2c2f36" },
+  { key: "iron", label: { zh: "鐵灰", en: "Iron" }, bg: "#14161a", surface: "#1d2026" },
 ];
 
 const DEFAULT_SHADE_INDEX = 3;
@@ -467,7 +580,7 @@ function MoonIcon() {
   );
 }
 
-function ThemePicker() {
+function ThemePicker({ lang }: { lang: Lang }) {
   const [state, setState] = useState<ThemeState | null>(null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -524,8 +637,8 @@ function ThemePicker() {
         type="button"
         className="theme-toggle-btn"
         onClick={() => update({ mode: state.mode === "light" ? "dark" : "light" })}
-        aria-label="切換亮/暗模式"
-        title="切換亮/暗模式"
+        aria-label={t(lang, "toggleTheme")}
+        title={t(lang, "toggleTheme")}
       >
         {state.mode === "light" ? <SunIcon /> : <MoonIcon />}
       </button>
@@ -534,12 +647,12 @@ function ThemePicker() {
         className="theme-swatch-btn"
         style={{ background: currentAccent[state.mode] }}
         onClick={() => setOpen((o) => !o)}
-        aria-label="調整配色"
-        title="調整配色"
+        aria-label={t(lang, "adjustColor")}
+        title={t(lang, "adjustColor")}
       />
       {open && (
         <div className="theme-menu">
-          <div className="theme-menu-label">灰階</div>
+          <div className="theme-menu-label">{t(lang, "grayscale")}</div>
           <div className="theme-shade-row">
             {shades.map((shade, i) => (
               <button
@@ -549,11 +662,11 @@ function ThemePicker() {
                 onClick={() => update({ shadeIndex: i })}
               >
                 <span className="theme-shade-swatch" style={{ background: shade.bg }} />
-                {shade.label}
+                {shade.label[lang]}
               </button>
             ))}
           </div>
-          <div className="theme-menu-label">主色</div>
+          <div className="theme-menu-label">{t(lang, "accentColor")}</div>
           <div className="theme-accent-row">
             {ACCENT_FAMILIES.map((a) => (
               <button
@@ -586,6 +699,28 @@ export default function CaseBoard({
   const [source, setSource] = useState(initialSource);
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
+
+  // --- UI language ---
+  const [lang, setLang] = useState<Lang>("zh");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LANG_STORAGE_KEY);
+      if (saved === "en" || saved === "zh") setLang(saved);
+    } catch {
+      // ignore — falls back to the zh default
+    }
+  }, []);
+  function toggleLang() {
+    setLang((prev) => {
+      const next = prev === "zh" ? "en" : "zh";
+      try {
+        localStorage.setItem(LANG_STORAGE_KEY, next);
+      } catch {
+        // ignore write failures (private browsing, storage full, etc.)
+      }
+      return next;
+    });
+  }
 
   // --- Draggable column order ---
   const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(DEFAULT_COLUMN_ORDER);
@@ -828,7 +963,7 @@ export default function CaseBoard({
       });
       const data = await res.json();
       if (!res.ok) {
-        setAuthError(data.error || "發送失敗");
+        setAuthError(data.error || t(lang, "sendFailed"));
         return;
       }
       rememberEmail(authEmail);
@@ -849,7 +984,7 @@ export default function CaseBoard({
       });
       const data = await res.json();
       if (!res.ok) {
-        setAuthError(data.error || "驗證失敗");
+        setAuthError(data.error || t(lang, "verifyFailed"));
         return;
       }
       setMe({ email: data.email, name: data.email.split("@")[0] });
@@ -882,7 +1017,7 @@ export default function CaseBoard({
 
   async function submitComment(c: CaseRow) {
     if (!commentDraft.trim()) {
-      setCommentError("請輸入留言內容");
+      setCommentError(t(lang, "commentRequired"));
       return;
     }
     setCommentSubmitting(true);
@@ -895,7 +1030,7 @@ export default function CaseBoard({
       });
       const data = await res.json();
       if (!res.ok) {
-        setCommentError(data.error || "送出失敗");
+        setCommentError(data.error || t(lang, "submitFailed"));
         return;
       }
 
@@ -907,7 +1042,7 @@ export default function CaseBoard({
         });
         if (!statusRes.ok) {
           const statusData = await statusRes.json().catch(() => ({}));
-          setCommentError(`留言已送出，但狀態更新失敗：${statusData.error || ""}`);
+          setCommentError(t(lang, "statusUpdateFailedAfterComment", statusData.error || ""));
           await refresh();
           return;
         }
@@ -940,7 +1075,7 @@ export default function CaseBoard({
 
   async function submitEdit(c: CaseRow, originalEntry: string) {
     if (!editDraft.trim()) {
-      setEditError("請輸入內容");
+      setEditError(t(lang, "editContentRequired"));
       return;
     }
     setEditSubmitting(true);
@@ -953,7 +1088,7 @@ export default function CaseBoard({
       });
       const data = await res.json();
       if (!res.ok) {
-        setEditError(data.error || "更新失敗");
+        setEditError(data.error || t(lang, "updateFailed"));
         return;
       }
       setEditingEntryKey(null);
@@ -982,7 +1117,7 @@ export default function CaseBoard({
       const data = await res.json();
       if (!res.ok) {
         setQuickStatusErrorRowKey(rowKey);
-        setQuickStatusError(data.error || "更新失敗");
+        setQuickStatusError(data.error || t(lang, "updateFailed"));
         return;
       }
       await refresh();
@@ -1000,7 +1135,7 @@ export default function CaseBoard({
           <td key={colKey}>
             {c.date}
             {c.daysOpen !== null && !c.isCompleted ? (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{t(lang, "daysAgo", c.daysOpen)}</div>
             ) : null}
           </td>
         );
@@ -1039,6 +1174,7 @@ export default function CaseBoard({
             onStartEdit={startEdit}
             onCancelEdit={cancelEdit}
             onSubmitEdit={(entry) => submitEdit(c, entry)}
+            lang={lang}
           />
         );
       case "status": {
@@ -1061,11 +1197,11 @@ export default function CaseBoard({
                 // jumps out from under the cursor.
                 <span className="badge-select-wrap">
                   <span className={`badge ${statusClass(c.status)}`}>
-                    {isSubmittingStatus ? "更新中..." : c.status}
+                    {isSubmittingStatus ? t(lang, "updating") : c.status}
                   </span>
                   <select
                     className="quick-status-overlay"
-                    aria-label="變更狀態"
+                    aria-label={t(lang, "changeStatus")}
                     value=""
                     disabled={isSubmittingStatus}
                     onChange={(e) => {
@@ -1083,7 +1219,7 @@ export default function CaseBoard({
               ) : (
                 <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
               )}
-              {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+              {c.isOverdue && <span className="badge overdue-tag">{t(lang, "overdueTag")}</span>}
             </div>
             {quickStatusErrorRowKey === rowKey && quickStatusError && (
               <div className="comment-error">{quickStatusError}</div>
@@ -1094,7 +1230,7 @@ export default function CaseBoard({
                 className="comment-trigger"
                 onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
               >
-                {openCommentKey === rowKey ? "取消" : "💬 留言"}
+                {openCommentKey === rowKey ? t(lang, "cancel") : t(lang, "comment")}
               </button>
             )}
           </td>
@@ -1116,19 +1252,19 @@ export default function CaseBoard({
                 className="comment-textarea"
                 value={commentDraft}
                 onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder="輸入留言，會加到「回答內容」欄位最下方"
+                placeholder={t(lang, "commentPlaceholder")}
                 rows={3}
               />
               <div className="comment-actions">
                 <label className="comment-status-choice">
-                  同時更新狀態：
+                  {t(lang, "alsoUpdateStatus")}
                   <select
                     value={commentStatusChoice}
                     onChange={(e) =>
                       setCommentStatusChoice(e.target.value as "" | (typeof WRITABLE_STATUSES)[number])
                     }
                   >
-                    <option value="">不變更</option>
+                    <option value="">{t(lang, "noChange")}</option>
                     {WRITABLE_STATUSES.map((s) => (
                       <option key={s} value={s}>
                         {s}
@@ -1142,7 +1278,7 @@ export default function CaseBoard({
                   onClick={() => submitComment(c)}
                   disabled={commentSubmitting}
                 >
-                  {commentSubmitting ? "送出中..." : "送出留言"}
+                  {commentSubmitting ? t(lang, "submitting") : t(lang, "submitComment")}
                 </button>
               </div>
               {commentError && <div className="comment-error">{commentError}</div>}
@@ -1242,22 +1378,23 @@ export default function CaseBoard({
         <div className="top-bar">
           {updateAvailable && (
             <div className="update-banner">
-              <span>
-                Sheet updated{changedSeqs.length > 0 ? ` (${formatChangedSeqs(changedSeqs)})` : ""}, please refresh
-              </span>
+              <span>{t(lang, "updateNotice", changedSeqs.length > 0 ? formatChangedSeqs(changedSeqs) : "")}</span>
             </div>
           )}
           <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
-            {loading ? "更新中..." : "重新整理"}
+            {loading ? t(lang, "refreshing") : t(lang, "refresh")}
           </button>
-          <ThemePicker />
+          <button type="button" className="lang-toggle-btn" onClick={toggleLang}>
+            {t(lang, "toggleLang")}
+          </button>
+          <ThemePicker lang={lang} />
         {authChecked && (
           <>
             {me ? (
               <>
-                <span>已登入：{me.name}</span>
+                <span>{t(lang, "loggedInAs", me.name)}</span>
                 <button type="button" className="link-btn" onClick={logout}>
-                  登出
+                  {t(lang, "logout")}
                 </button>
               </>
             ) : authStage === "email" ? (
@@ -1265,7 +1402,7 @@ export default function CaseBoard({
                 <input
                   type="email"
                   list="saved-emails"
-                  placeholder="公司信箱（留言/改狀態需要驗證）"
+                  placeholder={t(lang, "emailPlaceholder")}
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
                 />
@@ -1275,7 +1412,7 @@ export default function CaseBoard({
                   ))}
                 </datalist>
                 <button type="button" onClick={requestAuthCode} disabled={authLoading || !authEmail}>
-                  {authLoading ? "發送中..." : "取得驗證碼"}
+                  {authLoading ? t(lang, "sending") : t(lang, "getCode")}
                 </button>
               </>
             ) : (
@@ -1283,15 +1420,15 @@ export default function CaseBoard({
                 <input
                   type="text"
                   className="code-input"
-                  placeholder="輸入驗證碼"
+                  placeholder={t(lang, "codePlaceholder")}
                   value={authCode}
                   onChange={(e) => setAuthCode(e.target.value)}
                 />
                 <button type="button" onClick={verifyAuthCode} disabled={authLoading || !authCode}>
-                  {authLoading ? "驗證中..." : "驗證"}
+                  {authLoading ? t(lang, "verifying") : t(lang, "verify")}
                 </button>
                 <button type="button" className="link-btn" onClick={() => setAuthStage("email")}>
-                  重新輸入信箱
+                  {t(lang, "reenterEmail")}
                 </button>
               </>
             )}
@@ -1303,57 +1440,58 @@ export default function CaseBoard({
 
       {source === "mock" && (
         <div className="banner">
-          {error
-            ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
-            : "尚未設定Sheet連結，目前顯示的是範例資料。"}
+          {error ? t(lang, "mockBannerError", error) : t(lang, "mockBannerNoSheet")}
         </div>
       )}
 
       <div className="summary">
         <div className="stat">
           <div className="value">{totalCount}</div>
-          <div className="label">總案件數</div>
+          <div className="label">{t(lang, "totalCases")}</div>
         </div>
         <div className="stat">
           <div className="value">{openCount}</div>
-          <div className="label">待追蹤(未完成)</div>
+          <div className="label">{t(lang, "openCases")}</div>
         </div>
         <div className="stat">
           <div className="value">{completedCount}</div>
-          <div className="label">已完成</div>
+          <div className="label">{t(lang, "completedCases")}</div>
         </div>
         <div className="stat overdue">
           <div className="value">{overdueCount}</div>
-          <div className="label">逾期(超過3天未完成)</div>
+          <div className="label">{t(lang, "overdueCases")}</div>
         </div>
       </div>
 
       <div className="toolbar">
         <div className="filters">
           <MultiSelect
-            allLabel="全部部門"
+            allLabel={t(lang, "allDepartments")}
             options={departments}
             selected={selectedDepartments}
             onChange={setSelectedDepartments}
+            lang={lang}
           />
           <MultiSelect
-            allLabel="全部狀態"
+            allLabel={t(lang, "allStatuses")}
             options={statuses}
             selected={selectedStatuses}
             onChange={setSelectedStatuses}
+            lang={lang}
+            labelFor={(opt) => (opt === COMPLETED_LABEL ? t(lang, "completedCases") : opt)}
           />
           <div className="date-range">
             <select
               value={datePreset}
               onChange={(e) => applyDatePreset(e.target.value)}
-              aria-label="日期範圍快速選擇"
+              aria-label={t(lang, "dateRangeLabel")}
             >
-              <option value="all">全部時間</option>
-              <option value="7">最近7天</option>
-              <option value="30">最近30天</option>
-              <option value="thisMonth">本月</option>
-              <option value="lastMonth">上月</option>
-              <option value="custom">自訂區間</option>
+              <option value="all">{t(lang, "allTime")}</option>
+              <option value="7">{t(lang, "last7Days")}</option>
+              <option value="30">{t(lang, "last30Days")}</option>
+              <option value="thisMonth">{t(lang, "thisMonth")}</option>
+              <option value="lastMonth">{t(lang, "lastMonth")}</option>
+              <option value="custom">{t(lang, "customRange")}</option>
             </select>
             <input
               type="date"
@@ -1363,9 +1501,9 @@ export default function CaseBoard({
                 setDateFrom(e.target.value);
                 setDatePreset("custom");
               }}
-              aria-label="起始日期"
+              aria-label={t(lang, "startDate")}
             />
-            <span>至</span>
+            <span>{t(lang, "dateTo")}</span>
             <input
               type="date"
               lang="en-US"
@@ -1374,7 +1512,7 @@ export default function CaseBoard({
                 setDateTo(e.target.value);
                 setDatePreset("custom");
               }}
-              aria-label="結束日期"
+              aria-label={t(lang, "endDate")}
             />
             {(dateFrom || dateTo) && (
               <button
@@ -1386,18 +1524,18 @@ export default function CaseBoard({
                   setDatePreset("all");
                 }}
               >
-                清除
+                {t(lang, "clear")}
               </button>
             )}
           </div>
           <div className="search-group">
             <input
               type="text"
-              placeholder="搜尋序列 / OP / CS / 內容..."
+              placeholder={t(lang, "searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <span className="result-count">篩選出 {filteredValidCount} 筆</span>
+            <span className="result-count">{t(lang, "resultCount", filteredValidCount)}</span>
           </div>
         </div>
       </div>
@@ -1434,14 +1572,15 @@ export default function CaseBoard({
                 if (colKey === "date") {
                   return (
                     <th key={colKey} className="sortable draggable-col" onClick={toggleDateSort} {...dragProps}>
-                      日期 {dateSort === "desc" ? "↓新到舊" : dateSort === "asc" ? "↑舊到新" : "↕"}
+                      {COLUMN_LABELS.date[lang]}{" "}
+                      {dateSort === "desc" ? t(lang, "newestFirst") : dateSort === "asc" ? t(lang, "oldestFirst") : "↕"}
                       {resizeHandle}
                     </th>
                   );
                 }
                 return (
                   <th key={colKey} className="draggable-col" {...dragProps}>
-                    {COLUMN_LABELS[colKey]}
+                    {COLUMN_LABELS[colKey][lang]}
                     {resizeHandle}
                   </th>
                 );
@@ -1453,7 +1592,7 @@ export default function CaseBoard({
             {olderRows.length > 0 && (
               <tr>
                 <td colSpan={columnOrder.length} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
-                  {showOlder ? "▲ 收合" : "▼ 顯示"} 1個月前的紀錄({olderRows.length}筆)
+                  {showOlder ? t(lang, "hideOlder") : t(lang, "showOlder")} {t(lang, "olderRecords", olderRows.length)}
                 </td>
               </tr>
             )}
@@ -1461,7 +1600,7 @@ export default function CaseBoard({
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={columnOrder.length} className="empty">
-                  沒有符合條件的案件
+                  {t(lang, "noMatchingCases")}
                 </td>
               </tr>
             )}
