@@ -141,21 +141,53 @@ async function setCellValue(ctx: SheetContext, column: string, rowIndex: number,
   });
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Writes to a cell, then re-reads it shortly after to confirm the write
+// actually stuck. If someone has that same cell open for editing in the
+// Sheets UI at the same moment, our write can go through fine and then get
+// silently overwritten once they commit their own edit afterwards — the
+// API call itself reports success either way, so we have to check. Retries
+// once (recomputing from a fresh read) before giving up.
+async function writeAndVerify(
+  ctx: SheetContext,
+  column: string,
+  rowIndex: number,
+  computeNext: (current: string) => string,
+  expectSubstring: string
+): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const current = await getCellValue(ctx, column, rowIndex);
+    await setCellValue(ctx, column, rowIndex, computeNext(current));
+
+    await delay(1500);
+    const after = await getCellValue(ctx, column, rowIndex);
+    if (after.includes(expectSubstring)) return;
+  }
+  throw new Error("寫入後似乎被其他人同時編輯覆蓋了，請確認 Sheet 內容，必要時重新操作一次。");
+}
+
 // Appends `entry` above whatever is already in the 回答内容 cell, matching
 // the team's existing convention of stacking timestamped updates in one
 // cell — newest entry on top, separated by a blank line.
 export async function appendReply(rowIndex: number, entry: string): Promise<void> {
   const ctx = await getSheetContext();
-  const current = await getCellValue(ctx, ctx.replyCol, rowIndex);
-  const next = current.trim() ? `${entry}\n\n${current}` : entry;
-  await setCellValue(ctx, ctx.replyCol, rowIndex, next);
+  await writeAndVerify(
+    ctx,
+    ctx.replyCol,
+    rowIndex,
+    (current) => (current.trim() ? `${entry}\n\n${current}` : entry),
+    entry
+  );
 }
 
 // Restricted at the call site to "pending" / "Follow up" — this function
 // itself will write whatever string it's given, so callers must validate.
 export async function updateStatus(rowIndex: number, status: string): Promise<void> {
   const ctx = await getSheetContext();
-  await setCellValue(ctx, ctx.statusCol, rowIndex, status);
+  await writeAndVerify(ctx, ctx.statusCol, rowIndex, () => status, status);
 }
 
 // Replaces one exact entry within the 回答内容 cell's stacked text with a
@@ -167,6 +199,18 @@ export async function replaceReplyEntry(rowIndex: number, oldEntry: string, newE
   const ctx = await getSheetContext();
   const current = await getCellValue(ctx, ctx.replyCol, rowIndex);
   if (!current.includes(oldEntry)) return false;
-  await setCellValue(ctx, ctx.replyCol, rowIndex, current.replace(oldEntry, newEntry));
+
+  await writeAndVerify(
+    ctx,
+    ctx.replyCol,
+    rowIndex,
+    (latest) =>
+      latest.includes(oldEntry)
+        ? latest.replace(oldEntry, newEntry)
+        : latest.trim()
+        ? `${newEntry}\n\n${latest}`
+        : newEntry,
+    newEntry
+  );
   return true;
 }
