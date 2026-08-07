@@ -33,6 +33,31 @@ function seqNumber(seq: string): number {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+function ClampedCell({
+  text,
+  cellKey,
+  expanded,
+  onToggle,
+}: {
+  text: string;
+  cellKey: string;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  const isLong = text.length > 120 || text.split("\n").length > 3;
+  const isExpanded = expanded.has(cellKey);
+  return (
+    <td className="note-cell">
+      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{text}</div>
+      {isLong && (
+        <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
+          {isExpanded ? "▲ Show less" : "⋯ Show more"}
+        </button>
+      )}
+    </td>
+  );
+}
+
 function MultiSelect({
   allLabel,
   options,
@@ -178,8 +203,6 @@ export default function CaseBoard({
   }
 
   function renderRow(c: CaseRow, key: string) {
-    const isLong = c.note.length > 120 || c.note.split("\n").length > 3;
-    const isExpanded = expandedNotes.has(key);
     return (
       <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
         <td>{c.seq}</td>
@@ -192,14 +215,8 @@ export default function CaseBoard({
         <td>{c.department}</td>
         <td>{c.cs}</td>
         <td>{c.op}</td>
-        <td className="note-cell">
-          <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{c.note}</div>
-          {isLong && (
-            <button type="button" className="note-toggle" onClick={() => toggleNote(key)}>
-              {isExpanded ? "▲ Show less" : "⋯ Show more"}
-            </button>
-          )}
-        </td>
+        <ClampedCell text={c.note} cellKey={`${key}-note`} expanded={expandedNotes} onToggle={toggleNote} />
+        <ClampedCell text={c.reply} cellKey={`${key}-reply`} expanded={expandedNotes} onToggle={toggleNote} />
         <td>
           <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
           {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
@@ -289,6 +306,7 @@ export default function CaseBoard({
               <th>CS</th>
               <th>OP</th>
               <th>內容</th>
+              <th>回答內容</th>
               <th>狀態</th>
             </tr>
           </thead>
@@ -296,7 +314,7 @@ export default function CaseBoard({
             {recentRows.map((c, i) => renderRow(c, `recent-${i}`))}
             {olderRows.length > 0 && (
               <tr>
-                <td colSpan={7} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
+                <td colSpan={8} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
                   {showOlder ? "▲ 收合" : "▼ 顯示"} 1個月前的紀錄({olderRows.length}筆)
                 </td>
               </tr>
@@ -304,7 +322,7 @@ export default function CaseBoard({
             {showOlder && olderRows.map((c, i) => renderRow(c, `older-${i}`))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={7} className="empty">
+                <td colSpan={8} className="empty">
                   沒有符合條件的案件
                 </td>
               </tr>
