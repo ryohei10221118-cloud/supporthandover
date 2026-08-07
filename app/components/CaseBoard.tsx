@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CaseRow } from "@/lib/types";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
@@ -71,6 +71,17 @@ function MultiSelect({
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const summary =
     selected.length === 0
       ? allLabel
@@ -83,21 +94,25 @@ function MultiSelect({
   }
 
   return (
-    <details className="multiselect">
-      <summary>{summary}</summary>
-      <div className="multiselect-menu">
-        <label className="multiselect-option">
-          <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} />
-          {allLabel}
-        </label>
-        {options.map((opt) => (
-          <label key={opt} className="multiselect-option">
-            <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
-            {opt}
+    <div className="multiselect" ref={rootRef}>
+      <button type="button" className="multiselect-summary" onClick={() => setOpen((o) => !o)}>
+        {summary} {open ? "▴" : "▾"}
+      </button>
+      {open && (
+        <div className="multiselect-menu">
+          <label className="multiselect-option">
+            <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} />
+            {allLabel}
           </label>
-        ))}
-      </div>
-    </details>
+          {options.map((opt) => (
+            <label key={opt} className="multiselect-option">
+              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
