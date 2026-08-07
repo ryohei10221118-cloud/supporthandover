@@ -933,6 +933,7 @@ export default function CaseBoard({
   const [quickStatusRowKey, setQuickStatusRowKey] = useState<string | null>(null);
   const [quickStatusErrorRowKey, setQuickStatusErrorRowKey] = useState<string | null>(null);
   const [quickStatusError, setQuickStatusError] = useState<string | null>(null);
+  const [editingStatusRowKey, setEditingStatusRowKey] = useState<string | null>(null);
 
   async function quickChangeStatus(c: CaseRow, rowKey: string, status: string) {
     setQuickStatusRowKey(rowKey);
@@ -1006,46 +1007,72 @@ export default function CaseBoard({
             onSubmitEdit={(entry) => submitEdit(c, entry)}
           />
         );
-      case "status":
+      case "status": {
+        const isEditingStatus = editingStatusRowKey === rowKey;
+        const isSubmittingStatus = quickStatusRowKey === rowKey;
         return (
           <td key={colKey}>
-            <div className="status-badges">
-              <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-              {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
-            </div>
-            {me && (
-              <>
-                <select
-                  className="quick-status-select"
-                  value=""
-                  disabled={quickStatusRowKey === rowKey}
-                  onChange={(e) => {
-                    if (e.target.value) quickChangeStatus(c, rowKey, e.target.value);
-                  }}
-                >
-                  <option value="">
-                    {quickStatusRowKey === rowKey ? "更新中..." : "變更狀態..."}
+            {isEditingStatus ? (
+              <select
+                className="quick-status-select"
+                autoFocus
+                value=""
+                disabled={isSubmittingStatus}
+                onFocus={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {
+                    // showPicker isn't supported in every browser — the
+                    // select is still focused, so a click still opens it
+                  }
+                }}
+                onChange={(e) => {
+                  if (e.target.value) quickChangeStatus(c, rowKey, e.target.value);
+                  setEditingStatusRowKey(null);
+                }}
+                onBlur={() => setEditingStatusRowKey(null)}
+              >
+                <option value="" disabled>
+                  {c.status || "選擇狀態"}
+                </option>
+                {WRITABLE_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
-                  {WRITABLE_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                {quickStatusErrorRowKey === rowKey && quickStatusError && (
-                  <div className="comment-error">{quickStatusError}</div>
+                ))}
+              </select>
+            ) : (
+              <div className="status-badges">
+                {me ? (
+                  <button
+                    type="button"
+                    className={`badge ${statusClass(c.status)}`}
+                    disabled={isSubmittingStatus}
+                    onClick={() => setEditingStatusRowKey(rowKey)}
+                  >
+                    {isSubmittingStatus ? "更新中..." : c.status}
+                  </button>
+                ) : (
+                  <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
                 )}
-                <button
-                  type="button"
-                  className="comment-trigger"
-                  onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
-                >
-                  {openCommentKey === rowKey ? "取消" : "💬 留言"}
-                </button>
-              </>
+                {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+              </div>
+            )}
+            {quickStatusErrorRowKey === rowKey && quickStatusError && (
+              <div className="comment-error">{quickStatusError}</div>
+            )}
+            {me && (
+              <button
+                type="button"
+                className="comment-trigger"
+                onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
+              >
+                {openCommentKey === rowKey ? "取消" : "💬 留言"}
+              </button>
             )}
           </td>
         );
+      }
     }
   }
 

@@ -325,6 +325,21 @@ tr.overdue td {
   white-space: nowrap;
 }
 
+button.badge {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.badge:hover {
+  opacity: 0.85;
+}
+
+button.badge:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .badge.status-pending { background: #fef3c7; color: #92400e; }
 .badge.status-replied { background: #dbeafe; color: #1e40af; }
 .badge.status-followup { background: #fed7aa; color: #9a3412; }
@@ -619,7 +634,6 @@ tr.overdue td {
 
 .quick-status-select {
   display: block;
-  margin-top: 6px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
