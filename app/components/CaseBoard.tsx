@@ -491,6 +491,86 @@ function MultiSelect({
   );
 }
 
+// Custom-styled popup instead of a native <select> — a native dropdown's
+// expanded option list is OS-rendered chrome that CSS can't restyle (stays
+// a plain white/black box regardless of the app's light/dark theme).
+// Absolutely positioned, so opening it doesn't resize or move the badge
+// underneath it the way swapping to a real <select> used to.
+function StatusMenu({
+  status,
+  isOverdue,
+  canEdit,
+  isSubmitting,
+  onChangeStatus,
+  lang,
+}: {
+  status: string;
+  isOverdue: boolean;
+  canEdit: boolean;
+  isSubmitting: boolean;
+  onChangeStatus: (status: string) => void;
+  lang: Lang;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // If the current status is already one of the two writable ones, only
+  // offer the other — no point listing the status it already is. Anything
+  // else (replied/closed/Move to HO/...) offers both.
+  const currentStatusNormalized = status.trim().toLowerCase();
+  const availableStatuses = WRITABLE_STATUSES.some((s) => s.toLowerCase() === currentStatusNormalized)
+    ? WRITABLE_STATUSES.filter((s) => s.toLowerCase() !== currentStatusNormalized)
+    : WRITABLE_STATUSES;
+
+  const badge = <span className={`badge ${statusClass(status)}`}>{isSubmitting ? t(lang, "updating") : status}</span>;
+
+  return (
+    <div className="status-badges">
+      {canEdit ? (
+        <div className="status-menu-wrap" ref={rootRef}>
+          <button
+            type="button"
+            className="status-menu-trigger"
+            disabled={isSubmitting}
+            onClick={() => setOpen((o) => !o)}
+            aria-label={t(lang, "changeStatus")}
+          >
+            {badge}
+          </button>
+          {open && (
+            <div className="status-menu">
+              {availableStatuses.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="status-menu-option"
+                  onClick={() => {
+                    onChangeStatus(s);
+                    setOpen(false);
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        badge
+      )}
+      {isOverdue && <span className="badge overdue-tag">{t(lang, "overdueTag")}</span>}
+    </div>
+  );
+}
+
 // --- Light/dark mode + accent color picker ---
 // Index 3 in both shade lists is the exact color this app already shipped
 // with, so a first-time visitor (nothing in localStorage yet) sees a
@@ -1197,48 +1277,16 @@ export default function CaseBoard({
         );
       case "status": {
         const isSubmittingStatus = quickStatusRowKey === rowKey;
-        // If the current status is already one of the two writable ones,
-        // only offer the other — no point listing the status it already is.
-        // Anything else (replied/closed/Move to HO/...) offers both.
-        const currentStatusNormalized = c.status.trim().toLowerCase();
-        const availableStatuses = WRITABLE_STATUSES.some((s) => s.toLowerCase() === currentStatusNormalized)
-          ? WRITABLE_STATUSES.filter((s) => s.toLowerCase() !== currentStatusNormalized)
-          : WRITABLE_STATUSES;
         return (
           <td key={colKey}>
-            <div className="status-badges">
-              {me ? (
-                // A real (invisible) <select> sits directly on top of the
-                // visible badge, exactly matching its size — clicking
-                // anywhere on the badge opens the native dropdown in place,
-                // with nothing swapped or resized, so the target never
-                // jumps out from under the cursor.
-                <span className="badge-select-wrap">
-                  <span className={`badge ${statusClass(c.status)}`}>
-                    {isSubmittingStatus ? t(lang, "updating") : c.status}
-                  </span>
-                  <select
-                    className="quick-status-overlay"
-                    aria-label={t(lang, "changeStatus")}
-                    value=""
-                    disabled={isSubmittingStatus}
-                    onChange={(e) => {
-                      if (e.target.value) quickChangeStatus(c, rowKey, e.target.value);
-                    }}
-                  >
-                    <option value="" disabled hidden />
-                    {availableStatuses.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </span>
-              ) : (
-                <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-              )}
-              {c.isOverdue && <span className="badge overdue-tag">{t(lang, "overdueTag")}</span>}
-            </div>
+            <StatusMenu
+              status={c.status}
+              isOverdue={c.isOverdue}
+              canEdit={!!me}
+              isSubmitting={isSubmittingStatus}
+              onChangeStatus={(status) => quickChangeStatus(c, rowKey, status)}
+              lang={lang}
+            />
             {quickStatusErrorRowKey === rowKey && quickStatusError && (
               <div className="comment-error">{quickStatusError}</div>
             )}
