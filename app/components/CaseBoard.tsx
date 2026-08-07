@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CaseRow } from "@/lib/types";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
@@ -35,6 +35,36 @@ function seqNumber(seq: string): number {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+// Restricted to RFC 3986 URL-safe characters rather than "any non-
+// whitespace" — Chinese text is routinely typed right up against a pasted
+// URL with no space in between, and a [^\s]+ class would swallow it into
+// the link.
+const URL_RE = /(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g;
+// Punctuation that commonly trails a pasted URL and shouldn't be part of
+// the link itself.
+const TRAILING_PUNCT_RE = /[),.;:!?'\]]+$/;
+
+function linkify(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  text.split(URL_RE).forEach((part, i) => {
+    if (!part) return;
+    if (!/^https?:\/\//.test(part)) {
+      nodes.push(part);
+      return;
+    }
+    const trailingMatch = part.match(TRAILING_PUNCT_RE);
+    const trailing = trailingMatch ? trailingMatch[0] : "";
+    const url = trailing ? part.slice(0, part.length - trailing.length) : part;
+    nodes.push(
+      <a key={`${keyPrefix}-${i}`} href={url} target="_blank" rel="noopener noreferrer" className="reply-link">
+        {url}
+      </a>
+    );
+    if (trailing) nodes.push(trailing);
+  });
+  return nodes;
+}
+
 function ClampedCell({
   text,
   cellKey,
@@ -50,7 +80,7 @@ function ClampedCell({
   const isExpanded = expanded.has(cellKey);
   return (
     <td className="note-cell">
-      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{text}</div>
+      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
       {isLong && (
         <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
           {isExpanded ? "▲ Show less" : "⋯ Show more"}
@@ -155,7 +185,7 @@ function ReplyCell({
               ) : (
                 <>
                   {!hasOwnFormatHeader(entry) && <span className="reply-support-tag">Support</span>}
-                  {entry}
+                  {linkify(entry, entryKey)}
                   {own && (
                     <button
                       type="button"

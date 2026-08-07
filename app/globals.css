@@ -291,6 +291,15 @@ tr.overdue td {
   }
 }
 
+.reply-link {
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.reply-link:hover {
+  text-decoration: underline;
+}
+
 .note-toggle {
   display: block;
   margin-top: 4px;
