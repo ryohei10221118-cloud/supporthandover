@@ -261,6 +261,24 @@ function linkify(text: string, keyPrefix: string): ReactNode[] {
   return nodes;
 }
 
+// A plain character count under-clamps dense CJK text: Chinese/Japanese/
+// Korean characters render roughly twice as wide as Latin/ASCII ones, so a
+// 90-character Chinese paragraph can visually overflow 3 lines well before
+// a 120-character Latin one would. Weight CJK (and other full-width)
+// characters as 2 "units" so the threshold reflects visual width instead
+// of raw length.
+const FULLWIDTH_RE = /[　-鿿＀-￯]/;
+
+function isVisuallyLong(text: string): boolean {
+  if (text.split("\n").length > 3) return true;
+  let weighted = 0;
+  for (const ch of text) {
+    weighted += FULLWIDTH_RE.test(ch) ? 2 : 1;
+    if (weighted > 120) return true;
+  }
+  return false;
+}
+
 function ClampedCell({
   text,
   cellKey,
@@ -272,7 +290,7 @@ function ClampedCell({
   expanded: Set<string>;
   onToggle: (key: string) => void;
 }) {
-  const isLong = text.length > 120 || text.split("\n").length > 3;
+  const isLong = isVisuallyLong(text);
   const isExpanded = expanded.has(cellKey);
   return (
     <td className="note-cell">
@@ -342,7 +360,7 @@ function ReplyCell({
   lang: Lang;
 }) {
   const entries = reply.trim() ? reply.split(/\n\n+/) : [];
-  const isLong = reply.length > 120 || reply.split("\n").length > 3;
+  const isLong = isVisuallyLong(reply);
   const isExpanded = expanded.has(cellKey);
 
   if (entries.length === 0) return <td className="note-cell" />;
