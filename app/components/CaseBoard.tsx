@@ -118,7 +118,7 @@ export default function CaseBoard({
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("none");
+  const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
 
   const departments = useMemo(
     () => Array.from(new Set(cases.map((c) => c.department).filter(Boolean))).sort(),
