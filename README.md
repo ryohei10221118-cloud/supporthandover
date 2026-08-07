@@ -51,6 +51,37 @@ SHEET_GID=你的sheet gid
 
 网页会自动显示范例(mock)资料，方便在还没接上真实 Sheet 前先确认功能，画面上也会有提示banner。
 
+## 留言 / 改状态的身份验证
+
+其他 team 要留言或修改状态前，需要用公司信箱验证一次身份。做法是寄一组一次性验证码到该信箱(用 Google Apps Script 免费寄信，不需要额外的付费寄信服务)，验证成功后用一个有签章保护的 Cookie 记住登入状态(约 90 天)，之后不用每次重新验证。
+
+设定步骤：
+
+1. 到 [script.google.com](https://script.google.com) 建立一个新专案，把预设程式码换成：
+
+   ```javascript
+   function doPost(e) {
+     const params = JSON.parse(e.postData.contents);
+     if (params.secret !== "换成你自己设的一组密钥") {
+       return ContentService.createTextOutput("unauthorized");
+     }
+     MailApp.sendEmail(params.to, "T1HO Case Board 驗證碼", `您的驗證碼是: ${params.code}\n5 分鐘內有效。`);
+     return ContentService.createTextOutput("ok");
+   }
+   ```
+
+2. 右上角「部署」→「新增部署作业」→ 类型选「网页应用程式」，执行身份设「我」，存取权限设「所有人」→部署，会拿到一个网址(结尾 `/exec`)
+3. 设定以下环境变数：
+
+   ```
+   ALLOWED_EMAIL_DOMAIN=你们公司信箱的网域(例如 company.com)
+   AUTH_SECRET=一组够长的随机字串，例如用 `openssl rand -hex 32` 产生
+   APPS_SCRIPT_MAIL_URL=上面拿到的 Apps Script 网址
+   APPS_SCRIPT_SECRET=跟 Apps Script 程式码里同一组密钥
+   ```
+
+`密钥(secret)` 只是我们伺服器跟 Apps Script 之间互相核对用的固定暗号，不会出现在寄给使用者的信件内容里；真正寄给使用者的一次性验证码是伺服器每次当场随机产生的。
+
 ## 本机开发
 
 ```bash
@@ -70,6 +101,7 @@ npm run dev
 
 ## 已知限制 / 后续可以做的事
 
-- 目前没有登入/权限区分，所有能拿到网址的人都能看到全部案件(已确认此为可接受的 MVP 范围)
+- 浏览看板本身不需要登入，所有能拿到网址的人都能看到全部案件(已确认此为可接受的 MVP 范围)；留言/改状态才需要公司信箱验证
+- 留言/改状态的后端(`lib/sheetsApi.ts` 的 `appendReply` / `updateStatus`)跟身份验证(`/api/auth/*`)都已完成，但还没有对应的网页介面按钮，也还没有实际串接会呼叫这两个写入函式的 API
 - 「逾期」目前是单纯以日历天数计算(超过 3 天)，没有把周末排除在外
 - 案件目前没有独立的「分类」栏位，无法做案件类型统计；如果之后要做这块分析，建议在 Sheet 新增一个分类下拉栏位，让 CS 建案时顺手选
