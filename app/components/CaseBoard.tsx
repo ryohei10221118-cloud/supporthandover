@@ -214,7 +214,7 @@ export default function CaseBoard({
         </td>
         <td>{c.department}</td>
         <td>{c.cs}</td>
-        <td>{c.op}</td>
+        <ClampedCell text={c.op} cellKey={`${key}-op`} expanded={expandedNotes} onToggle={toggleNote} />
         <ClampedCell text={c.note} cellKey={`${key}-note`} expanded={expandedNotes} onToggle={toggleNote} />
         <ClampedCell text={c.reply} cellKey={`${key}-reply`} expanded={expandedNotes} onToggle={toggleNote} />
         <td>
