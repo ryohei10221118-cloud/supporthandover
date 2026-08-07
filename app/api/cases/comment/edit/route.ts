@@ -17,7 +17,8 @@ function formatTimestampUTC8(date: Date): string {
 
 // Matches entries this tool writes: "MM/DD HH:MM name" on the first line
 // (no colon in the name — that excludes most hand-typed CS notes), then
-// the message body. The name segment must equal the editor's own name.
+// the message body. Any logged-in user may edit any matching entry, not
+// just their own.
 const OWN_ENTRY_RE = /^(\d{2}\/\d{2} \d{2}:\d{2}) ([^\n:]+)\n([\s\S]*)$/;
 
 export async function POST(req: Request) {
@@ -46,12 +47,14 @@ export async function POST(req: Request) {
   if (!match) {
     return NextResponse.json({ error: "無法辨識這則留言" }, { status: 400 });
   }
-  const [, timestamp, name] = match;
-  if (name !== displayNameFromEmail(session.email)) {
-    return NextResponse.json({ error: "只能編輯自己的留言" }, { status: 403 });
-  }
+  const [, timestamp, originalName] = match;
+  const editorName = displayNameFromEmail(session.email);
+  const editedMarker =
+    editorName !== originalName
+      ? `(已編輯 by ${editorName} ${formatTimestampUTC8(new Date())})`
+      : `(已編輯 ${formatTimestampUTC8(new Date())})`;
 
-  const newEntry = `${timestamp} ${name}\n${newMessage}\n(已編輯 ${formatTimestampUTC8(new Date())})`;
+  const newEntry = `${timestamp} ${originalName}\n${newMessage}\n${editedMarker}`;
 
   let replaced: boolean;
   try {

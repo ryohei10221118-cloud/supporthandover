@@ -1,9 +1,55 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { CaseRow } from "@/lib/types";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
+
+// Fixed to the sheet's own 部門 dropdown list, rather than whatever
+// distinct strings happen to appear in the data (blank/legacy/typo values
+// included) — used both as the filter's option list and to scope the
+// summary stats to "real" departments only.
+const OFFICIAL_DEPARTMENTS = [
+  "DI+support",
+  "IM",
+  "AM",
+  "SAM",
+  "Mark/Iris",
+  "360",
+  "CMS",
+  "Support",
+  "SA",
+  "First",
+] as const;
+
+function isValidDept(dept: string): boolean {
+  return (OFFICIAL_DEPARTMENTS as readonly string[]).includes(dept);
+}
+
+type ColumnKey = "seq" | "date" | "department" | "cs" | "op" | "note" | "reply" | "status";
+
+const DEFAULT_COLUMN_ORDER: ColumnKey[] = ["seq", "date", "department", "cs", "op", "note", "reply", "status"];
+
+const COLUMN_LABELS: Record<ColumnKey, string> = {
+  seq: "序列",
+  date: "日期",
+  department: "部門",
+  cs: "CS",
+  op: "OP",
+  note: "內容",
+  reply: "回答內容",
+  status: "狀態",
+};
+
+const COLUMN_ORDER_STORAGE_KEY = "t1ho_column_order";
+
+function isColumnOrder(value: unknown): value is ColumnKey[] {
+  return (
+    Array.isArray(value) &&
+    value.length === DEFAULT_COLUMN_ORDER.length &&
+    DEFAULT_COLUMN_ORDER.every((k) => value.includes(k))
+  );
+}
 
 function statusClass(status: string): string {
   const key = status.trim().toLowerCase();
@@ -91,18 +137,18 @@ function ClampedCell({
 }
 
 // Matches entries this tool itself wrote (see app/api/cases/comment/route.ts):
-// "MM/DD HH:MM name" on the first line, then the message body. Only entries
-// whose name matches the logged-in user's own name are offered for editing.
+// "MM/DD HH:MM name" on the first line, then the message body. Any logged-in
+// user may edit any entry matching this format (not just their own) — see
+// app/api/cases/comment/edit/route.ts for the matching server-side rule.
 const OWN_ENTRY_RE = /^(\d{2}\/\d{2} \d{2}:\d{2}) ([^\n:]+)\n([\s\S]*)$/;
 
-function parseOwnEntry(entry: string, myName: string): { message: string } | null {
+function parseEditableEntry(entry: string): { message: string } | null {
   const m = entry.match(OWN_ENTRY_RE);
   if (!m) return null;
-  const [, , name, rest] = m;
-  if (name !== myName) return null;
+  const [, , , rest] = m;
   // Editing replaces the whole message anyway, but don't show a stale
   // "(已編輯 ...)" tag from a previous edit inside the textarea.
-  const message = rest.replace(/\n\(已編輯 \d{2}\/\d{2} \d{2}:\d{2}\)\s*$/, "");
+  const message = rest.replace(/\n\(已編輯(?: by [^\n]+)? \d{2}\/\d{2} \d{2}:\d{2}\)\s*$/, "");
   return { message };
 }
 
@@ -154,7 +200,7 @@ function ReplyCell({
       <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
         {entries.map((entry, i) => {
           const entryKey = `${cellKey}-${i}`;
-          const own = myName ? parseOwnEntry(entry, myName) : null;
+          const editable = myName ? parseEditableEntry(entry) : null;
           const isEditingThis = editingKey === entryKey;
 
           return (
@@ -186,11 +232,11 @@ function ReplyCell({
                 <>
                   {!hasOwnFormatHeader(entry) && <span className="reply-support-tag">Support</span>}
                   {linkify(entry, entryKey)}
-                  {own && (
+                  {editable && (
                     <button
                       type="button"
                       className="note-toggle"
-                      onClick={() => onStartEdit(entryKey, own.message)}
+                      onClick={() => onStartEdit(entryKey, editable.message)}
                     >
                       ✎ 編輯
                     </button>
@@ -280,15 +326,42 @@ export default function CaseBoard({
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
 
+  // --- Draggable column order ---
+  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(DEFAULT_COLUMN_ORDER);
+  const draggedColumnRef = useRef<ColumnKey | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLUMN_ORDER_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (isColumnOrder(parsed)) setColumnOrder(parsed);
+    } catch {
+      // ignore malformed/unavailable localStorage — fall back to default
+    }
+  }, []);
+
+  function moveColumn(dragged: ColumnKey, target: ColumnKey) {
+    if (dragged === target) return;
+    setColumnOrder((prev) => {
+      const next = prev.filter((k) => k !== dragged);
+      next.splice(next.indexOf(target), 0, dragged);
+      try {
+        localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore write failures (private browsing, storage full, etc.)
+      }
+      return next;
+    });
+  }
+
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
 
-  const departments = useMemo(
-    () => Array.from(new Set(cases.map((c) => c.department).filter(Boolean))).sort(),
-    [cases]
-  );
+  const departments: string[] = Array.from(OFFICIAL_DEPARTMENTS);
   const statuses = useMemo(() => {
     const unique = Array.from(new Set(cases.map((c) => statusCategory(c.status)).filter(Boolean)));
     return unique.sort((a, b) => {
@@ -306,13 +379,15 @@ export default function CaseBoard({
     return cases.filter((c) => {
       if (selectedDepartments.length > 0 && !selectedDepartments.includes(c.department)) return false;
       if (selectedStatuses.length > 0 && !selectedStatuses.includes(statusCategory(c.status))) return false;
+      if (dateFrom && c.date < dateFrom) return false;
+      if (dateTo && c.date > dateTo) return false;
       if (q) {
         const haystack = `${c.seq} ${c.op} ${c.cs} ${c.note} ${c.reply}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [cases, selectedDepartments, selectedStatuses, search]);
+  }, [cases, selectedDepartments, selectedStatuses, dateFrom, dateTo, search]);
 
   const sorted = useMemo(() => {
     const withMeta = filtered.map((c) => ({
@@ -354,12 +429,14 @@ export default function CaseBoard({
     return { recentRows: recent, olderRows: older };
   }, [sorted]);
 
-  // 總案件數 stays the true overall total; these three follow the current
-  // department/status/search filter so they answer "how many of what I'm
-  // looking at" instead of always describing the whole sheet.
-  const openCount = filtered.filter((c) => !c.isCompleted).length;
-  const completedCount = filtered.filter((c) => c.isCompleted).length;
-  const overdueCount = filtered.filter((c) => c.isOverdue).length;
+  // All four summary stats only count cases with a recognized 部門 value —
+  // blank/legacy/typo department values are excluded from official totals.
+  // 總案件數 is the overall total within that scope; the other three follow
+  // the current department/status/date/search filter on top of it.
+  const totalCount = cases.filter((c) => isValidDept(c.department)).length;
+  const openCount = filtered.filter((c) => !c.isCompleted && isValidDept(c.department)).length;
+  const completedCount = filtered.filter((c) => c.isCompleted && isValidDept(c.department)).length;
+  const overdueCount = filtered.filter((c) => c.isOverdue && isValidDept(c.department)).length;
 
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
@@ -557,24 +634,43 @@ export default function CaseBoard({
     }
   }
 
-  function renderRow(c: CaseRow, key: string) {
-    return (
-      <Fragment key={key}>
-        <tr className={c.isOverdue ? "overdue" : undefined}>
-          <td>{c.seq}</td>
-          <td>
+  function renderCell(colKey: ColumnKey, c: CaseRow, rowKey: string): ReactNode {
+    switch (colKey) {
+      case "seq":
+        return <td key={colKey}>{c.seq}</td>;
+      case "date":
+        return (
+          <td key={colKey}>
             {c.date}
             {c.daysOpen !== null && !c.isCompleted ? (
               <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
             ) : null}
           </td>
-          <td>{c.department}</td>
-          <td>{c.cs}</td>
-          <ClampedCell text={c.op} cellKey={`${key}-op`} expanded={expandedNotes} onToggle={toggleNote} />
-          <ClampedCell text={c.note} cellKey={`${key}-note`} expanded={expandedNotes} onToggle={toggleNote} />
+        );
+      case "department":
+        return <td key={colKey}>{c.department}</td>;
+      case "cs":
+        return <td key={colKey}>{c.cs}</td>;
+      case "op":
+        return (
+          <ClampedCell key={colKey} text={c.op} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} />
+        );
+      case "note":
+        return (
+          <ClampedCell
+            key={colKey}
+            text={c.note}
+            cellKey={`${rowKey}-note`}
+            expanded={expandedNotes}
+            onToggle={toggleNote}
+          />
+        );
+      case "reply":
+        return (
           <ReplyCell
+            key={colKey}
             reply={c.reply}
-            cellKey={`${key}-reply`}
+            cellKey={`${rowKey}-reply`}
             myName={me?.name ?? null}
             expanded={expandedNotes}
             onToggleClamp={toggleNote}
@@ -587,28 +683,40 @@ export default function CaseBoard({
             onCancelEdit={cancelEdit}
             onSubmitEdit={(entry) => submitEdit(c, entry)}
           />
-          <td>
+        );
+      case "status":
+        return (
+          <td key={colKey}>
             <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
             {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
             {me && (
               <button
                 type="button"
                 className="comment-trigger"
-                onClick={() => (openCommentKey === key ? setOpenCommentKey(null) : openComment(key))}
+                onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
               >
-                {openCommentKey === key ? "取消" : "💬 留言"}
+                {openCommentKey === rowKey ? "取消" : "💬 留言"}
               </button>
             )}
           </td>
+        );
+    }
+  }
+
+  function renderRow(c: CaseRow, key: string) {
+    return (
+      <Fragment key={key}>
+        <tr className={c.isOverdue ? "overdue" : undefined}>
+          {columnOrder.map((colKey) => renderCell(colKey, c, key))}
         </tr>
         {openCommentKey === key && (
           <tr>
-            <td colSpan={8} className="comment-row">
+            <td colSpan={columnOrder.length} className="comment-row">
               <textarea
                 className="comment-textarea"
                 value={commentDraft}
                 onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder="輸入留言，會加到「回答內容」欄位最上方"
+                placeholder="輸入留言，會加到「回答內容」欄位最下方"
                 rows={3}
               />
               <div className="comment-actions">
@@ -718,7 +826,7 @@ export default function CaseBoard({
 
       <div className="summary">
         <div className="stat">
-          <div className="value">{cases.length}</div>
+          <div className="value">{totalCount}</div>
           <div className="label">總案件數</div>
         </div>
         <div className="stat">
@@ -749,6 +857,33 @@ export default function CaseBoard({
             selected={selectedStatuses}
             onChange={setSelectedStatuses}
           />
+          <div className="date-range">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              aria-label="起始日期"
+            />
+            <span>至</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              aria-label="結束日期"
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+              >
+                清除
+              </button>
+            )}
+          </div>
           <input
             type="text"
             placeholder="搜尋序列 / OP / CS / 內容..."
@@ -766,23 +901,39 @@ export default function CaseBoard({
         <table>
           <thead>
             <tr>
-              <th>序列</th>
-              <th className="sortable" onClick={toggleDateSort}>
-                日期 {dateSort === "desc" ? "↓新到舊" : dateSort === "asc" ? "↑舊到新" : "↕"}
-              </th>
-              <th>部門</th>
-              <th>CS</th>
-              <th>OP</th>
-              <th>內容</th>
-              <th>回答內容</th>
-              <th>狀態</th>
+              {columnOrder.map((colKey) => {
+                const dragProps = {
+                  draggable: true,
+                  onDragStart: () => {
+                    draggedColumnRef.current = colKey;
+                  },
+                  onDragOver: (e: DragEvent) => e.preventDefault(),
+                  onDrop: (e: DragEvent) => {
+                    e.preventDefault();
+                    if (draggedColumnRef.current) moveColumn(draggedColumnRef.current, colKey);
+                    draggedColumnRef.current = null;
+                  },
+                };
+                if (colKey === "date") {
+                  return (
+                    <th key={colKey} className="sortable draggable-col" onClick={toggleDateSort} {...dragProps}>
+                      日期 {dateSort === "desc" ? "↓新到舊" : dateSort === "asc" ? "↑舊到新" : "↕"}
+                    </th>
+                  );
+                }
+                return (
+                  <th key={colKey} className="draggable-col" {...dragProps}>
+                    {COLUMN_LABELS[colKey]}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {recentRows.map((c, i) => renderRow(c, `recent-${i}`))}
             {olderRows.length > 0 && (
               <tr>
-                <td colSpan={8} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
+                <td colSpan={columnOrder.length} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
                   {showOlder ? "▲ 收合" : "▼ 顯示"} 1個月前的紀錄({olderRows.length}筆)
                 </td>
               </tr>
@@ -790,7 +941,7 @@ export default function CaseBoard({
             {showOlder && olderRows.map((c, i) => renderRow(c, `older-${i}`))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={8} className="empty">
+                <td colSpan={columnOrder.length} className="empty">
                   沒有符合條件的案件
                 </td>
               </tr>

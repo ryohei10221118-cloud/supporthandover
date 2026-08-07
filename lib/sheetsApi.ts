@@ -169,16 +169,15 @@ async function writeAndVerify(
   throw new Error("寫入後似乎被其他人同時編輯覆蓋了，請確認 Sheet 內容，必要時重新操作一次。");
 }
 
-// Appends `entry` above whatever is already in the 回答内容 cell, matching
-// the team's existing convention of stacking timestamped updates in one
-// cell — newest entry on top, separated by a blank line.
+// Appends `entry` below whatever is already in the 回答内容 cell — new
+// updates stack downward, oldest first, separated by a blank line.
 export async function appendReply(rowIndex: number, entry: string): Promise<void> {
   const ctx = await getSheetContext();
   await writeAndVerify(
     ctx,
     ctx.replyCol,
     rowIndex,
-    (current) => (current.trim() ? `${entry}\n\n${current}` : entry),
+    (current) => (current.trim() ? `${current}\n\n${entry}` : entry),
     entry
   );
 }

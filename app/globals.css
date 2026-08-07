@@ -111,6 +111,23 @@ h1 {
   min-width: 200px;
 }
 
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.date-range input[type="date"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 0.85rem;
+}
+
 .multiselect {
   position: relative;
 }
@@ -219,6 +236,19 @@ th {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+th.draggable-col {
+  cursor: grab;
+  user-select: none;
+}
+
+th.draggable-col:hover {
+  color: var(--accent);
+}
+
+th.draggable-col:active {
+  cursor: grabbing;
 }
 
 tr.overdue td {
