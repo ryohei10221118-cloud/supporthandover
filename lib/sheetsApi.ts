@@ -83,6 +83,11 @@ interface SheetContext {
 // This tool's write volume is low (occasional comments/status changes), so
 // the extra lookup isn't worth caching against the sheet's columns moving.
 async function getSheetContext(): Promise<SheetContext> {
+  if (!hasServiceAccountConfig()) {
+    throw new Error(
+      "Google Sheets 服務帳戶未設定，請確認 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY / SHEET_ID 環境變數。"
+    );
+  }
   const spreadsheetId = process.env.SHEET_ID!;
   const client = getClient();
   const title = await resolveSheetTitle(client, spreadsheetId);

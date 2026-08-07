@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { CaseRow } from "@/lib/types";
+
+const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
 
 function statusClass(status: string): string {
   const key = status.trim().toLowerCase();
@@ -202,26 +204,195 @@ export default function CaseBoard({
     });
   }
 
+  // --- Auth (email verification) ---
+  const [me, setMe] = useState<{ email: string; name: string } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authCode, setAuthCode] = useState("");
+  const [authStage, setAuthStage] = useState<"email" | "code">("email");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setMe(d.email ? { email: d.email, name: d.name } : null))
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  async function requestAuthCode() {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/auth/request-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "發送失敗");
+        return;
+      }
+      setAuthStage("code");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function verifyAuthCode() {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/auth/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: authCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "驗證失敗");
+        return;
+      }
+      setMe({ email: data.email, name: data.email.split("@")[0] });
+      setAuthStage("email");
+      setAuthEmail("");
+      setAuthCode("");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setMe(null);
+  }
+
+  // --- Comment / status write panel ---
+  const [openCommentKey, setOpenCommentKey] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentStatusChoice, setCommentStatusChoice] = useState<"" | (typeof WRITABLE_STATUSES)[number]>("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+
+  function openComment(key: string) {
+    setOpenCommentKey(key);
+    setCommentDraft("");
+    setCommentStatusChoice("");
+    setCommentError(null);
+  }
+
+  async function submitComment(c: CaseRow) {
+    if (!commentDraft.trim()) {
+      setCommentError("請輸入留言內容");
+      return;
+    }
+    setCommentSubmitting(true);
+    setCommentError(null);
+    try {
+      const res = await fetch("/api/cases/comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rowIndex: c.rowIndex, message: commentDraft.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCommentError(data.error || "送出失敗");
+        return;
+      }
+
+      if (commentStatusChoice) {
+        const statusRes = await fetch("/api/cases/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rowIndex: c.rowIndex, status: commentStatusChoice }),
+        });
+        if (!statusRes.ok) {
+          const statusData = await statusRes.json().catch(() => ({}));
+          setCommentError(`留言已送出，但狀態更新失敗：${statusData.error || ""}`);
+          await refresh();
+          return;
+        }
+      }
+
+      setOpenCommentKey(null);
+      await refresh();
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
   function renderRow(c: CaseRow, key: string) {
     return (
-      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
-        <td>{c.seq}</td>
-        <td>
-          {c.date}
-          {c.daysOpen !== null && !c.isCompleted ? (
-            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
-          ) : null}
-        </td>
-        <td>{c.department}</td>
-        <td>{c.cs}</td>
-        <ClampedCell text={c.op} cellKey={`${key}-op`} expanded={expandedNotes} onToggle={toggleNote} />
-        <ClampedCell text={c.note} cellKey={`${key}-note`} expanded={expandedNotes} onToggle={toggleNote} />
-        <ClampedCell text={c.reply} cellKey={`${key}-reply`} expanded={expandedNotes} onToggle={toggleNote} />
-        <td>
-          <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-          {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
-        </td>
-      </tr>
+      <Fragment key={key}>
+        <tr className={c.isOverdue ? "overdue" : undefined}>
+          <td>{c.seq}</td>
+          <td>
+            {c.date}
+            {c.daysOpen !== null && !c.isCompleted ? (
+              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
+            ) : null}
+          </td>
+          <td>{c.department}</td>
+          <td>{c.cs}</td>
+          <ClampedCell text={c.op} cellKey={`${key}-op`} expanded={expandedNotes} onToggle={toggleNote} />
+          <ClampedCell text={c.note} cellKey={`${key}-note`} expanded={expandedNotes} onToggle={toggleNote} />
+          <ClampedCell text={c.reply} cellKey={`${key}-reply`} expanded={expandedNotes} onToggle={toggleNote} />
+          <td>
+            <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
+            {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+            {me && (
+              <button
+                type="button"
+                className="comment-trigger"
+                onClick={() => (openCommentKey === key ? setOpenCommentKey(null) : openComment(key))}
+              >
+                {openCommentKey === key ? "取消" : "💬 留言"}
+              </button>
+            )}
+          </td>
+        </tr>
+        {openCommentKey === key && (
+          <tr>
+            <td colSpan={8} className="comment-row">
+              <textarea
+                className="comment-textarea"
+                value={commentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
+                placeholder="輸入留言，會加到「回答內容」欄位最上方"
+                rows={3}
+              />
+              <div className="comment-actions">
+                <label className="comment-status-choice">
+                  同時更新狀態：
+                  <select
+                    value={commentStatusChoice}
+                    onChange={(e) =>
+                      setCommentStatusChoice(e.target.value as "" | (typeof WRITABLE_STATUSES)[number])
+                    }
+                  >
+                    <option value="">不變更</option>
+                    {WRITABLE_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="comment-submit"
+                  onClick={() => submitComment(c)}
+                  disabled={commentSubmitting}
+                >
+                  {commentSubmitting ? "送出中..." : "送出留言"}
+                </button>
+              </div>
+              {commentError && <div className="comment-error">{commentError}</div>}
+            </td>
+          </tr>
+        )}
+      </Fragment>
     );
   }
 
@@ -245,6 +416,47 @@ export default function CaseBoard({
           {error
             ? `目前無法讀取Sheet資料，顯示的是範例資料。原因：${error}`
             : "尚未設定Sheet連結，目前顯示的是範例資料。"}
+        </div>
+      )}
+
+      {authChecked && (
+        <div className="login-bar">
+          {me ? (
+            <>
+              <span>已登入：{me.name}</span>
+              <button type="button" className="link-btn" onClick={logout}>
+                登出
+              </button>
+            </>
+          ) : authStage === "email" ? (
+            <>
+              <input
+                type="email"
+                placeholder="公司信箱（留言/改狀態需要驗證）"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+              />
+              <button type="button" onClick={requestAuthCode} disabled={authLoading || !authEmail}>
+                {authLoading ? "發送中..." : "取得驗證碼"}
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="輸入驗證碼"
+                value={authCode}
+                onChange={(e) => setAuthCode(e.target.value)}
+              />
+              <button type="button" onClick={verifyAuthCode} disabled={authLoading || !authCode}>
+                {authLoading ? "驗證中..." : "驗證"}
+              </button>
+              <button type="button" className="link-btn" onClick={() => setAuthStage("email")}>
+                重新輸入信箱
+              </button>
+            </>
+          )}
+          {authError && <span className="login-error">{authError}</span>}
         </div>
       )}
 
