@@ -227,13 +227,35 @@ export default function CaseBoard({
   const [authStage, setAuthStage] = useState<"email" | "code">("email");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [savedEmails, setSavedEmails] = useState<string[]>([]);
+
+  const SAVED_EMAILS_KEY = "t1ho_saved_emails";
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => setMe(d.email ? { email: d.email, name: d.name } : null))
       .finally(() => setAuthChecked(true));
+
+    try {
+      const raw = localStorage.getItem(SAVED_EMAILS_KEY);
+      if (raw) setSavedEmails(JSON.parse(raw));
+    } catch {
+      // ignore malformed/unavailable localStorage
+    }
   }, []);
+
+  function rememberEmail(email: string) {
+    setSavedEmails((prev) => {
+      const next = [email, ...prev.filter((e) => e !== email)].slice(0, 5);
+      try {
+        localStorage.setItem(SAVED_EMAILS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore write failures (private browsing, storage full, etc.)
+      }
+      return next;
+    });
+  }
 
   async function requestAuthCode() {
     setAuthLoading(true);
@@ -249,6 +271,7 @@ export default function CaseBoard({
         setAuthError(data.error || "發送失敗");
         return;
       }
+      rememberEmail(authEmail);
       setAuthStage("code");
     } finally {
       setAuthLoading(false);
@@ -447,10 +470,16 @@ export default function CaseBoard({
             <>
               <input
                 type="email"
+                list="saved-emails"
                 placeholder="公司信箱（留言/改狀態需要驗證）"
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
               />
+              <datalist id="saved-emails">
+                {savedEmails.map((e) => (
+                  <option key={e} value={e} />
+                ))}
+              </datalist>
               <button type="button" onClick={requestAuthCode} disabled={authLoading || !authEmail}>
                 {authLoading ? "發送中..." : "取得驗證碼"}
               </button>
@@ -459,6 +488,7 @@ export default function CaseBoard({
             <>
               <input
                 type="text"
+                className="code-input"
                 placeholder="輸入驗證碼"
                 value={authCode}
                 onChange={(e) => setAuthCode(e.target.value)}

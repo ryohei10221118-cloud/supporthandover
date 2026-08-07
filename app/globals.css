@@ -304,18 +304,19 @@ tr.overdue td {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  max-width: 360px;
+  max-width: min(560px, calc(100vw - 40px));
   font-size: 0.85rem;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .login-bar {
     position: static;
     max-width: none;
     margin: 12px 0 16px;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 
@@ -327,6 +328,11 @@ tr.overdue td {
   padding: 7px 10px;
   font-size: 0.85rem;
   min-width: 220px;
+}
+
+.login-bar input.code-input {
+  min-width: 110px;
+  width: 110px;
 }
 
 .login-bar button {
