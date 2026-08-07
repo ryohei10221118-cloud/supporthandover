@@ -1048,9 +1048,6 @@ export default function CaseBoard({
                 }}
                 onBlur={() => setEditingStatusRowKey(null)}
               >
-                <option value="" disabled>
-                  {c.status || "選擇狀態"}
-                </option>
                 {availableStatuses.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -1266,7 +1263,7 @@ export default function CaseBoard({
 
       {updateAvailable && (
         <div className="update-banner">
-          <span>Sheet 有新的更新，點右上角「重新整理」查看最新資料</span>
+          <span>Sheet updated, please refresh</span>
         </div>
       )}
 
