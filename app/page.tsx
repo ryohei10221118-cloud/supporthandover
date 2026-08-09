@@ -1,11 +1,12 @@
 import { fetchCases, mockCases } from "@/lib/cases";
 import CaseBoard from "./components/CaseBoard";
 
-// Same reasoning as app/api/cases/route.ts: force every request to hit the
-// Sheets API fresh instead of serving a cached snapshot.
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
+// Short revalidate window instead of force-dynamic: repeat visits within
+// 30s get an instant cached response instead of a fresh Sheets API round
+// trip (which is what made switching between T1 HO / HO feel slow — /ho
+// and /t1ho-test already got this fix, this page just hadn't caught up).
+// The "重新整理" button still always fetches live via /api/cases.
+export const revalidate = 30;
 
 export default async function Home() {
   let initialCases;
