@@ -5,6 +5,8 @@ import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
+import OptionBadge, { type BadgeOption } from "./OptionBadge";
+import { FIELD_LIST_KEY, type OptionLists } from "@/lib/optionLists";
 
 // --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
@@ -62,20 +64,6 @@ function t<K extends keyof typeof STRINGS>(
 const T1HO_STATUS_ORDER = ["pending", "follow up", "move to ho", "已完成"];
 const HO_STATUS_ORDER = ["follow up", "procedure", "note", "done", "closed for us"];
 
-function statusClass(status: string): string {
-  const key = status.trim().toLowerCase();
-  if (key === "pending") return "status-pending";
-  if (key === "replied") return "status-replied";
-  if (key === "follow up") return "status-followup";
-  if (key === "move to ho") return "status-movetoho";
-  if (key === "closed") return "status-closed";
-  if (key === "done") return "status-done";
-  if (key === "closed for us") return "status-closedforus";
-  if (key === "note") return "status-note";
-  if (key === "procedure") return "status-procedure";
-  return "status-other";
-}
-
 const COMPLETED_LABEL = "已完成";
 
 function t1hoStatusCategory(status: string): string {
@@ -106,15 +94,6 @@ function formatTimestampUTC8(iso: string): string {
   const hh = String(shifted.getUTCHours()).padStart(2, "0");
   const min = String(shifted.getUTCMinutes()).padStart(2, "0");
   return `${mm}/${dd} ${hh}:${min}`;
-}
-
-function priorityClass(priority: string): string {
-  const key = priority.trim().toUpperCase();
-  if (key === "P1") return "priority-p1";
-  if (key === "P2") return "priority-p2";
-  if (key === "P3") return "priority-p3";
-  if (key === "P4") return "priority-p4";
-  return "priority-other";
 }
 
 // --- Draggable/resizable columns (same behavior as CaseBoard.tsx's T1 HO
@@ -491,7 +470,17 @@ function MultiSelect({
   );
 }
 
-export default function SupaBoard({ board, initialCases, initialError }: { board: SupaBoard; initialCases: SupaCaseRow[]; initialError: string | null }) {
+export default function SupaBoard({
+  board,
+  initialCases,
+  initialError,
+  optionLists,
+}: {
+  board: SupaBoard;
+  initialCases: SupaCaseRow[];
+  initialError: string | null;
+  optionLists: OptionLists;
+}) {
   const [cases, setCases] = useState(initialCases);
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
@@ -559,6 +548,54 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openCommentKey]);
+
+  // --- Categorical cells (click-to-change option badges) ---
+  const [fieldSaving, setFieldSaving] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+
+  function badgeOptions(field: string): BadgeOption[] {
+    const listKey = FIELD_LIST_KEY[board][field];
+    if (!listKey) return [];
+    return optionLists[listKey].map((o) => ({ name: o.name, color: o.color }));
+  }
+
+  async function saveField(c: SupaCaseRow, field: string, value: string) {
+    setFieldSaving(`${c.id}-${field}`);
+    setFieldError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/field", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: c.id, board, field, value }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFieldError(data.error || t(lang, "saveFailed"));
+        return;
+      }
+      const patch: Partial<SupaCaseRow> =
+        field === "dept"
+          ? { dept: value }
+          : field === "type"
+            ? { hoType: value }
+            : field === "class"
+              ? { hoClass: value }
+              : field === "issueTag"
+                ? { issueTag: value }
+                : field === "priority"
+                  ? { priority: value }
+                  : { status: value };
+      setCases((prev) =>
+        prev.map((row) =>
+          row.id === c.id
+            ? { ...row, ...patch, updateDate: data.case?.update_date ?? row.updateDate }
+            : row
+        )
+      );
+    } finally {
+      setFieldSaving(null);
+    }
+  }
 
   // --- Related ticket / Note link editor ---
   const [linkTarget, setLinkTarget] = useState<{ caseId: string; kind: LinkKind } | null>(null);
@@ -869,9 +906,31 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       case "date":
         return <td key={colKey}>{c.date}</td>;
       case "group":
-        return <td key={colKey}>{board === "t1ho" ? c.dept : c.hoType}</td>;
+        return (
+          <td key={colKey}>
+            <OptionBadge
+              value={board === "t1ho" ? c.dept : c.hoType}
+              options={badgeOptions(board === "t1ho" ? "dept" : "type")}
+              chip
+              canEdit
+              isSubmitting={fieldSaving === `${c.id}-${board === "t1ho" ? "dept" : "type"}`}
+              onChange={(next) => saveField(c, board === "t1ho" ? "dept" : "type", next)}
+            />
+          </td>
+        );
       case "classification":
-        return <td key={colKey}>{c.hoClass}</td>;
+        return (
+          <td key={colKey}>
+            <OptionBadge
+              value={c.hoClass}
+              options={badgeOptions("class")}
+              chip
+              canEdit
+              isSubmitting={fieldSaving === `${c.id}-class`}
+              onChange={(next) => saveField(c, "class", next)}
+            />
+          </td>
+        );
       case "cs":
         return <td key={colKey}>{c.cs}</td>;
       case "op":
@@ -923,22 +982,40 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       case "status":
         return (
           <td key={colKey}>
-            <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
+            <OptionBadge
+              value={c.status}
+              options={badgeOptions("status")}
+              canEdit
+              isSubmitting={fieldSaving === `${c.id}-status`}
+              onChange={(next) => saveField(c, "status", next)}
+            />
           </td>
         );
       case "priority":
         return (
           <td key={colKey}>
-            {c.priority ? (
-              <span className={`priority-tag ${priorityClass(c.priority)}`}>
-                <span className="priority-dot" />
-                {c.priority}
-              </span>
-            ) : null}
+            <OptionBadge
+              value={c.priority}
+              options={badgeOptions("priority")}
+              canEdit
+              isSubmitting={fieldSaving === `${c.id}-priority`}
+              onChange={(next) => saveField(c, "priority", next)}
+            />
           </td>
         );
       case "issueTag":
-        return <td key={colKey}>{c.issueTag ? <span className="badge status-other">{c.issueTag}</span> : null}</td>;
+        return (
+          <td key={colKey}>
+            <OptionBadge
+              value={c.issueTag}
+              options={badgeOptions("issueTag")}
+              chip
+              canEdit
+              isSubmitting={fieldSaving === `${c.id}-issueTag`}
+              onChange={(next) => saveField(c, "issueTag", next)}
+            />
+          </td>
+        );
     }
   }
 
@@ -965,6 +1042,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
   return (
     <div>
       {error && <div className="banner">{t(lang, "loadError", error)}</div>}
+      {fieldError && <div className="banner">{fieldError}</div>}
 
       <div className="summary">
         <div className="stat">

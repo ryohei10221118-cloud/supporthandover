@@ -1046,6 +1046,97 @@ tbody tr:nth-child(even) {
   background: var(--bg);
 }
 
+/* ---------- click-to-change option badges ----------
+   The mockup's .status-wrap/.status-trigger/.status-menu pattern, used for
+   every categorical cell (狀態 / Type / Classification / Priority / Issue
+   Tag). Options and their colours come from the 選項管理 lists. */
+.status-wrap {
+  display: inline-block;
+  position: relative;
+}
+
+.status-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+  max-width: 100%;
+}
+
+.status-trigger .status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-trigger.chip {
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.status-wrap:not(.interactive) .status-trigger,
+.status-trigger:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.status-wrap.interactive .status-trigger:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.status-trigger .dot,
+.status-menu .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-menu.open {
+  display: block;
+  /* Some lists are long (HO Classification has hundreds of legacy values
+     until they're curated in 選項管理), so the menu scrolls rather than
+     running off the page. */
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 140px;
+  max-width: 240px;
+}
+
+.status-menu.open button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.status-menu.open button:hover {
+  background: var(--bg);
+}
+
+.status-menu-empty {
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .badge.status-pending { background: #fef3c7; color: #92400e; }
 .badge.status-replied { background: #dbeafe; color: #1e40af; }
 .badge.status-followup { background: #fed7aa; color: #9a3412; }
