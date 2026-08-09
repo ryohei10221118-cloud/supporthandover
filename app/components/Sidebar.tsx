@@ -12,6 +12,7 @@ const STRINGS = {
   tagline: { zh: "案件追蹤看板", en: "Case Tracking Board" },
   navT1ho: { zh: "T1 HO", en: "T1 HO" },
   navHo: { zh: "HO", en: "HO" },
+  navDashboard: { zh: "分析儀表板", en: "Dashboard" },
   navLists: { zh: "選項管理", en: "Option lists" },
   logout: { zh: "登出", en: "Sign out" },
 };
@@ -140,9 +141,18 @@ export default function Sidebar() {
     </svg>
   );
 
+  const dashboardIcon = (
+    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  );
+
   const navItems = [
     { href: "/", label: t(lang, "navT1ho"), icon: boardIcon },
     { href: "/ho", label: t(lang, "navHo"), icon: boardIcon },
+    { href: "/dashboard", label: t(lang, "navDashboard"), icon: dashboardIcon },
     { href: "/lists", label: t(lang, "navLists"), icon: listsIcon },
   ];
 

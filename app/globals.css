@@ -2282,3 +2282,143 @@ tbody tr:nth-child(even) {
     border-radius: 14px;
   }
 }
+
+/* ---------- 分析儀表板 (dashboard) ---------- */
+.range-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.range-pill {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.range-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.range-pill.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.summary-callout {
+  display: flex;
+  gap: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  align-items: flex-start;
+}
+
+.summary-callout svg {
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.summary-callout p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dash-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.dash-card h3 {
+  font-size: 0.92rem;
+  margin: 0 0 4px;
+}
+
+.dash-card .dash-sub {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+  font-size: 0.8rem;
+}
+
+.bar-row:last-child {
+  margin-bottom: 0;
+}
+
+.bar-label {
+  width: 108px;
+  flex-shrink: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-track {
+  flex: 1;
+  background: var(--bg);
+  border-radius: 5px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--accent);
+}
+
+.bar-value {
+  width: 38px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.ssg-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 900px) {
+  .dash-grid {
+    grid-template-columns: 1fr;
+  }
+}

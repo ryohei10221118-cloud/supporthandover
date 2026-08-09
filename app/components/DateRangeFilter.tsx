@@ -76,6 +76,7 @@ export function DateRangeFilter({
   rangeStart,
   rangeEnd,
   onRangeChange,
+  hideSelects = false,
 }: {
   lang?: "zh" | "en";
   dateType: DateType;
@@ -85,6 +86,9 @@ export function DateRangeFilter({
   rangeStart: Date | null;
   rangeEnd: Date | null;
   onRangeChange: (start: Date | null, end: Date | null) => void;
+  // The dashboard drives the range from its own pills, so it wants the
+  // calendar on its own without the date-type / preset selects.
+  hideSelects?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [viewY, setViewY] = useState(() => (rangeStart ?? new Date()).getFullYear());
@@ -132,22 +136,26 @@ export function DateRangeFilter({
 
   return (
     <div className="date-range">
-      <select
-        value={dateType}
-        onChange={(e) => onDateTypeChange(e.target.value as DateType)}
-        aria-label={L("dateTypeCreate")}
-      >
-        <option value="create">{L("dateTypeCreate")}</option>
-        <option value="update">{L("dateTypeUpdate")}</option>
-      </select>
-      <select value={preset} onChange={(e) => onPresetChange(e.target.value as DatePreset)}>
-        <option value="all">{L("all")}</option>
-        <option value="7d">{L("d7")}</option>
-        <option value="30d">{L("d30")}</option>
-        <option value="month">{L("month")}</option>
-        <option value="lastmonth">{L("lastmonth")}</option>
-        <option value="custom">{L("custom")}</option>
-      </select>
+      {!hideSelects && (
+        <>
+          <select
+            value={dateType}
+            onChange={(e) => onDateTypeChange(e.target.value as DateType)}
+            aria-label={L("dateTypeCreate")}
+          >
+            <option value="create">{L("dateTypeCreate")}</option>
+            <option value="update">{L("dateTypeUpdate")}</option>
+          </select>
+          <select value={preset} onChange={(e) => onPresetChange(e.target.value as DatePreset)}>
+            <option value="all">{L("all")}</option>
+            <option value="7d">{L("d7")}</option>
+            <option value="30d">{L("d30")}</option>
+            <option value="month">{L("month")}</option>
+            <option value="lastmonth">{L("lastmonth")}</option>
+            <option value="custom">{L("custom")}</option>
+          </select>
+        </>
+      )}
       {preset === "custom" && (
         <div className="range-picker" ref={rootRef}>
           <button type="button" className="range-picker-trigger" onClick={() => setOpen((o) => !o)}>

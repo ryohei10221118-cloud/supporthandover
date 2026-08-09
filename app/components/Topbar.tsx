@@ -15,6 +15,13 @@ export const PAGE_META = {
     title: { zh: "HO", en: "HO" },
     desc: { zh: "需要長期追蹤的案件，交接用。", en: "Cases needing long-term tracking and handover." },
   },
+  dashboard: {
+    title: { zh: "分析儀表板", en: "Dashboard" },
+    desc: {
+      zh: "跨分頁案件概況，給主管與其他部門一眼看懂。",
+      en: "Cross-board overview, at a glance for managers and other teams.",
+    },
+  },
   lists: {
     title: { zh: "選項管理", en: "Option lists" },
     desc: {
