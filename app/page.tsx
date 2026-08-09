@@ -1,5 +1,6 @@
 import { fetchCases, mockCases } from "@/lib/cases";
 import CaseBoard from "./components/CaseBoard";
+import Topbar from "./components/Topbar";
 
 // Short revalidate window instead of force-dynamic: repeat visits within
 // 30s get an instant cached response instead of a fresh Sheets API round
@@ -23,8 +24,13 @@ export default async function Home() {
   }
 
   return (
-    <main className="page">
-      <CaseBoard initialCases={initialCases} initialSource={source} initialError={error} />
-    </main>
+    <>
+      <Topbar page="t1ho" />
+      <main className="content">
+        <div className="page">
+          <CaseBoard initialCases={initialCases} initialSource={source} initialError={error} />
+        </div>
+      </main>
+    </>
   );
 }

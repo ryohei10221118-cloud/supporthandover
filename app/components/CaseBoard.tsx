@@ -1251,19 +1251,11 @@ export default function CaseBoard({
 
   return (
     <div>
-      <div className="page-header">
-        <h1>T1HO case board</h1>
-        <div className="top-bar">
-          {updateAvailable && (
-            <div className="update-banner">
-              <span>{t(lang, "updateNotice", changedSeqs.length > 0 ? formatChangedSeqs(changedSeqs) : "")}</span>
-            </div>
-          )}
-          <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
-            {loading ? t(lang, "refreshing") : t(lang, "refresh")}
-          </button>
+      {updateAvailable && (
+        <div className="update-banner">
+          <span>{t(lang, "updateNotice", changedSeqs.length > 0 ? formatChangedSeqs(changedSeqs) : "")}</span>
         </div>
-      </div>
+      )}
 
       {source === "mock" && (
         <div className="banner">
@@ -1358,6 +1350,9 @@ export default function CaseBoard({
             </button>
           )}
         </div>
+        <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
+          {loading ? t(lang, "refreshing") : t(lang, "refresh")}
+        </button>
       </div>
 
       <div className="table-wrap">

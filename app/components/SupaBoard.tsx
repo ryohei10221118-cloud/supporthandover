@@ -821,7 +821,11 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           />
         );
       case "relatedTicket":
-        return <td key={colKey}>{c.relatedTicketLabel}</td>;
+        // Rendered through linkify so a stored URL becomes a real link, the
+        // way the mockup shows this column. Values that are only a bare
+        // ticket key stay as text — turning those into links would need the
+        // team's Jira/wiki base URL, which isn't stored anywhere yet.
+        return <td key={colKey}>{linkify(c.relatedTicketLabel ?? "", `${rowKey}-ticket`)}</td>;
       case "updateDate":
         return <td key={colKey}>{c.updateDate}</td>;
       case "noteLabel":

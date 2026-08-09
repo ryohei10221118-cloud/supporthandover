@@ -1,5 +1,6 @@
 import { fetchSupabaseCases } from "@/lib/supabaseCases";
 import SupaBoard from "../components/SupaBoard";
+import Topbar from "../components/Topbar";
 
 // See app/ho/page.tsx for why this is a short revalidate instead of
 // force-dynamic.
@@ -20,12 +21,13 @@ export default async function T1hoTestPage() {
   }
 
   return (
-    <main className="page">
-      <h1>T1 HO 案件看板（Supabase 測試版）</h1>
-      <p className="subtitle">
-        這個頁面讀的是 Supabase，不是 Google Sheet——只是用來核對資料是否正確，正式看板（首頁）目前不受影響。
-      </p>
-      <SupaBoard board="t1ho" initialCases={initialCases} initialError={error} />
-    </main>
+    <>
+      <Topbar page="t1hoTest" />
+      <main className="content">
+        <div className="page">
+          <SupaBoard board="t1ho" initialCases={initialCases} initialError={error} />
+        </div>
+      </main>
+    </>
   );
 }

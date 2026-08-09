@@ -1,5 +1,6 @@
 import { fetchSupabaseCases } from "@/lib/supabaseCases";
 import SupaBoard from "../components/SupaBoard";
+import Topbar from "../components/Topbar";
 
 // Short revalidate window instead of force-dynamic: repeat visits within 30s
 // get an instant cached response instead of a fresh round trip to Supabase
@@ -18,10 +19,13 @@ export default async function HoPage() {
   }
 
   return (
-    <main className="page">
-      <h1>HO 案件看板</h1>
-      <p className="subtitle">依 Type / Classification / 狀態篩選目前追蹤中的 HO 案件</p>
-      <SupaBoard board="ho" initialCases={initialCases} initialError={error} />
-    </main>
+    <>
+      <Topbar page="ho" />
+      <main className="content">
+        <div className="page">
+          <SupaBoard board="ho" initialCases={initialCases} initialError={error} />
+        </div>
+      </main>
+    </>
   );
 }
