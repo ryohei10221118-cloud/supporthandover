@@ -1,9 +1,9 @@
 import { fetchSupabaseCases } from "@/lib/supabaseCases";
 import SupaBoard from "../components/SupaBoard";
 
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
+// See app/ho/page.tsx for why this is a short revalidate instead of
+// force-dynamic.
+export const revalidate = 30;
 
 // Not linked from the site nav on purpose — this is a side-by-side test of
 // reading T1 HO from Supabase instead of the Google Sheet, kept separate

@@ -2,6 +2,13 @@ import "server-only";
 import { getSupabaseClient } from "./supabaseClient";
 import { daysSince } from "./cases";
 
+// Supabase/PostgREST caps a single response at 1000 rows by default (the
+// project's db-max-rows setting) — anything past that is silently dropped,
+// not an error. Page through with .range() to get everything, and fire all
+// pages at once (we already know the total from the count query) instead of
+// waiting for each page in turn.
+const PAGE_SIZE = 1000;
+
 export type SupaBoard = "t1ho" | "ho";
 
 export interface SupaCaseRow {
@@ -67,34 +74,63 @@ interface CommentDbRow {
 
 export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
   const supabase = getSupabaseClient();
+  const CASE_COLUMNS =
+    "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, note_label, status, priority, issue_tag, update_date";
 
-  const { data: rows, error: casesError } = await supabase
+  const { count, error: countError } = await supabase
     .from("cases")
-    .select(
-      "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, note_label, status, priority, issue_tag, update_date"
-    )
+    .select("id", { count: "exact", head: true })
     .eq("board", board)
-    .eq("archived", false)
-    .returns<CaseDbRow[]>();
+    .eq("archived", false);
+  if (countError) throw new Error(`Supabase 讀取 cases 失敗: ${countError.message}`);
 
-  if (casesError) throw new Error(`Supabase 讀取 cases 失敗: ${casesError.message}`);
-  const caseRows = rows ?? [];
+  const total = count ?? 0;
+  if (total === 0) return [];
+
+  const pageStarts: number[] = [];
+  for (let from = 0; from < total; from += PAGE_SIZE) pageStarts.push(from);
+
+  const pages = await Promise.all(
+    pageStarts.map((from) =>
+      supabase
+        .from("cases")
+        .select(CASE_COLUMNS)
+        .eq("board", board)
+        .eq("archived", false)
+        // .range() pagination needs a stable sort order, otherwise Postgres
+        // doesn't guarantee the same row lands on the same page twice.
+        .order("seq", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1)
+        .returns<CaseDbRow[]>()
+    )
+  );
+  const caseRows: CaseDbRow[] = [];
+  for (const { data, error } of pages) {
+    if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
+    caseRows.push(...(data ?? []));
+  }
   if (caseRows.length === 0) return [];
 
   const caseIds = caseRows.map((r) => r.id);
   // in() has a practical URL-length ceiling — chunk to stay well under it.
   const CHUNK = 300;
+  const chunks: string[][] = [];
+  for (let i = 0; i < caseIds.length; i += CHUNK) chunks.push(caseIds.slice(i, i + CHUNK));
+
+  const commentPages = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("comments")
+        .select("case_id, body, created_at")
+        .in("case_id", chunk)
+        .order("created_at", { ascending: false })
+        .returns<CommentDbRow[]>()
+    )
+  );
   const latestByCase = new Map<string, string>();
-  for (let i = 0; i < caseIds.length; i += CHUNK) {
-    const chunk = caseIds.slice(i, i + CHUNK);
-    const { data: comments, error: commentsError } = await supabase
-      .from("comments")
-      .select("case_id, body, created_at")
-      .in("case_id", chunk)
-      .order("created_at", { ascending: false })
-      .returns<CommentDbRow[]>();
-    if (commentsError) throw new Error(`Supabase 讀取 comments 失敗: ${commentsError.message}`);
-    for (const c of comments ?? []) {
+  for (const { data, error } of commentPages) {
+    if (error) throw new Error(`Supabase 讀取 comments 失敗: ${error.message}`);
+    for (const c of data ?? []) {
       if (!latestByCase.has(c.case_id)) latestByCase.set(c.case_id, c.body.replace(LEGACY_PREFIX, ""));
     }
   }

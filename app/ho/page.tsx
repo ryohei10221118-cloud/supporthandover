@@ -1,9 +1,11 @@
 import { fetchSupabaseCases } from "@/lib/supabaseCases";
 import SupaBoard from "../components/SupaBoard";
 
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
+// Short revalidate window instead of force-dynamic: repeat visits within 30s
+// get an instant cached response instead of a fresh round trip to Supabase
+// (which is what made switching between T1 HO / HO feel slow). "重新整理"
+// still always fetches live via /api/cases-supabase.
+export const revalidate = 30;
 
 export default async function HoPage() {
   let initialCases: Awaited<ReturnType<typeof fetchSupabaseCases>> = [];
