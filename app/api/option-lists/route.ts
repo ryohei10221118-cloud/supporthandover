@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const supabase = getSupabaseClient();
     // New options go to the end of the list.
     const { data: last, error: lastError } = await supabase
-      .from("option_lists")
+      .from("dropdown_options")
       .select("sort_order")
       .eq("list_key", listKey)
       .order("sort_order", { ascending: false })
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     if (lastError) throw new Error(lastError.message);
 
     const { data, error } = await supabase
-      .from("option_lists")
+      .from("dropdown_options")
       .insert({ list_key: listKey, name, color, sort_order: (last?.sort_order ?? 0) + 1 })
       .select("id, list_key, name, color, sort_order")
       .maybeSingle();
@@ -89,7 +89,7 @@ export async function PATCH(req: Request) {
       const ids = order.filter((id): id is string => typeof id === "string");
       await Promise.all(
         ids.map((id, i) =>
-          supabase.from("option_lists").update({ sort_order: i + 1 }).eq("id", id)
+          supabase.from("dropdown_options").update({ sort_order: i + 1 }).eq("id", id)
         )
       );
       return NextResponse.json({ ok: true });
@@ -118,7 +118,7 @@ export async function PATCH(req: Request) {
     }
 
     const { data, error } = await supabase
-      .from("option_lists")
+      .from("dropdown_options")
       .update(patch)
       .eq("id", id)
       .select("id, list_key, name, color, sort_order")
@@ -156,7 +156,7 @@ export async function DELETE(req: Request) {
 
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from("option_lists").delete().eq("id", id);
+    const { error } = await supabase.from("dropdown_options").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
   } catch (err) {

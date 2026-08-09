@@ -115,11 +115,13 @@ export async function POST(req: Request) {
       const name = typeof att?.name === "string" ? att.name.slice(0, 200) : `screenshot-${i + 1}`;
 
       if (typeof att?.url === "string" && att.url.trim()) {
+        // Oversize files are never uploaded — the user pastes a link
+        // instead, so there's no storage_path for these.
         const url = att.url.trim();
         if (!/^https?:\/\//i.test(url)) continue;
         const { error } = await supabase
           .from("attachments")
-          .insert({ case_id: created.id, file_name: name, url });
+          .insert({ case_id: created.id, file_name: name, external_url: url, uploaded_by: createdBy });
         if (error) throw new Error(error.message);
         saved.push({ name, url });
         continue;
@@ -137,9 +139,13 @@ export async function POST(req: Request) {
       if (uploadError) throw new Error(`上傳截圖失敗: ${uploadError.message}`);
 
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      const { error } = await supabase
-        .from("attachments")
-        .insert({ case_id: created.id, file_name: name, storage_path: path, url: pub.publicUrl });
+      const { error } = await supabase.from("attachments").insert({
+        case_id: created.id,
+        file_name: name,
+        storage_path: path,
+        size_bytes: parsed.bytes.byteLength,
+        uploaded_by: createdBy,
+      });
       if (error) throw new Error(error.message);
       saved.push({ name, url: pub.publicUrl });
     }

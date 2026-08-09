@@ -6,15 +6,15 @@ import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 
 type Lang = "zh" | "en";
 
-const LIST_META: Record<ListKey, { name: Record<Lang, string>; global: boolean }> = {
-  "t1ho-dept": { name: { zh: "T1 HO 部門", en: "T1 HO Department" }, global: false },
-  "t1ho-status": { name: { zh: "T1 HO 狀態", en: "T1 HO Status" }, global: false },
-  "t1ho-issue": { name: { zh: "T1 HO Issue Tag", en: "T1 HO Issue Tag" }, global: false },
-  "ho-type": { name: { zh: "HO Type", en: "HO Type" }, global: false },
-  "ho-class": { name: { zh: "HO Classification", en: "HO Classification" }, global: false },
-  "ho-issue": { name: { zh: "HO Issue Tag", en: "HO Issue Tag" }, global: false },
-  "ho-status": { name: { zh: "HO 狀態", en: "HO Status" }, global: false },
-  priority: { name: { zh: "Priority", en: "Priority" }, global: true },
+const LIST_META: Record<ListKey, { name: Record<Lang, string> }> = {
+  "t1ho-dept": { name: { zh: "T1 HO 部門", en: "T1 HO Department" } },
+  "t1ho-status": { name: { zh: "T1 HO 狀態", en: "T1 HO Status" } },
+  "t1ho-issue": { name: { zh: "T1 HO Issue Tag", en: "T1 HO Issue Tag" } },
+  "ho-type": { name: { zh: "HO Type", en: "HO Type" } },
+  "ho-class": { name: { zh: "HO Classification", en: "HO Classification" } },
+  "ho-issue": { name: { zh: "HO Issue Tag", en: "HO Issue Tag" } },
+  "ho-status": { name: { zh: "HO 狀態", en: "HO Status" } },
+  priority: { name: { zh: "Priority", en: "Priority" } },
 };
 
 // Display order of the tabs, mirroring the mockup's list picker.
@@ -66,10 +66,13 @@ function t<K extends keyof typeof STRINGS>(
 export default function OptionListsPanel({
   initialLists,
   usage,
+  globalKeys,
   initialError,
 }: {
   initialLists: OptionLists;
   usage: Record<ListKey, Record<string, number>>;
+  // Lists shared across both boards, per dropdown_lists.is_global.
+  globalKeys: string[];
   initialError: string | null;
 }) {
   const [lists, setLists] = useState(initialLists);
@@ -97,6 +100,7 @@ export default function OptionListsPanel({
 
   const options = lists[activeKey];
   const meta = LIST_META[activeKey];
+  const isGlobal = globalKeys.includes(activeKey);
   const counts = usage[activeKey] ?? {};
 
   // Unused options first would hide the real list; instead keep the stored
@@ -210,7 +214,7 @@ export default function OptionListsPanel({
             onClick={() => setActiveKey(key)}
           >
             {LIST_META[key].name[lang]}
-            {LIST_META[key].global && <span className="global-tag">{t(lang, "global")}</span>}
+            {globalKeys.includes(key) && <span className="global-tag">{t(lang, "global")}</span>}
           </button>
         ))}
       </div>
@@ -219,7 +223,7 @@ export default function OptionListsPanel({
         <div className="card-head">
           <div>
             <h2>{meta.name[lang]}</h2>
-            <p className="hint">{meta.global ? t(lang, "hintGlobal") : t(lang, "hintOwn")}</p>
+            <p className="hint">{isGlobal ? t(lang, "hintGlobal") : t(lang, "hintOwn")}</p>
           </div>
           {totalUnused > 0 && (
             <span className="option-count">

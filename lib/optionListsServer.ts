@@ -85,10 +85,22 @@ export async function fetchOptionUsage(): Promise<OptionUsage> {
   return usage;
 }
 
+// Which lists are shared across both boards, straight from dropdown_lists
+// rather than hardcoded in the UI.
+export async function fetchGlobalListKeys(): Promise<Set<string>> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("dropdown_lists")
+    .select("key, is_global")
+    .returns<{ key: string; is_global: boolean }[]>();
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).filter((r) => r.is_global).map((r) => r.key));
+}
+
 export async function fetchOptionLists(): Promise<OptionLists> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
-    .from("option_lists")
+    .from("dropdown_options")
     .select("id, list_key, name, color, sort_order")
     .order("list_key", { ascending: true })
     .order("sort_order", { ascending: true });

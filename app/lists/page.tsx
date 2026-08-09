@@ -1,5 +1,5 @@
 import { emptyOptionLists, LIST_KEYS, type ListKey } from "@/lib/optionLists";
-import { fetchOptionLists, fetchOptionUsage } from "@/lib/optionListsServer";
+import { fetchOptionLists, fetchOptionUsage, fetchGlobalListKeys } from "@/lib/optionListsServer";
 import OptionListsPanel from "../components/OptionListsPanel";
 import Topbar from "../components/Topbar";
 import { getSessionRole } from "@/lib/permissionsServer";
@@ -18,10 +18,14 @@ export default async function ListsPage() {
 
   let lists = emptyOptionLists();
   let usage = Object.fromEntries(LIST_KEYS.map((k) => [k, {}])) as Record<ListKey, Record<string, number>>;
+  let globalKeys: string[] = [];
   let error: string | null = null;
 
   try {
-    [lists, usage] = await Promise.all([fetchOptionLists(), fetchOptionUsage()]);
+    const [l, u, g] = await Promise.all([fetchOptionLists(), fetchOptionUsage(), fetchGlobalListKeys()]);
+    lists = l;
+    usage = u;
+    globalKeys = [...g];
   } catch (err) {
     error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
   }
@@ -31,7 +35,7 @@ export default async function ListsPage() {
       <Topbar page="lists" />
       <main className="content">
         <div className="page">
-          <OptionListsPanel initialLists={lists} usage={usage} initialError={error} />
+          <OptionListsPanel initialLists={lists} usage={usage} globalKeys={globalKeys} initialError={error} />
         </div>
       </main>
     </>
