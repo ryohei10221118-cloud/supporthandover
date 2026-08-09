@@ -1,9 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  applyTheme,
   readStoredTheme,
   storeTheme,
   LANG_STORAGE_KEY,
@@ -33,6 +32,102 @@ function t(lang: Lang, key: string): string {
 }
 
 const SAVED_EMAILS_KEY = "t1ho_saved_emails";
+
+// This page's own accent picker — separate from the shade/accent picker on
+// the board pages (ThemePicker in CaseBoard.tsx / lib/theme.ts). The login
+// screen is a distinct branded surface, so it gets the mockup's original
+// 8-color palette, each also re-tinting --login-bg/--login-surface/--login-border
+// (not just the accent itself) so the whole card leans into the picked hue
+// instead of just the button/link color changing.
+const LOGIN_ACCENT_KEY = "t1ho_login_accent";
+
+interface LoginAccentVariant {
+  a1: string;
+  a2: string;
+  a: string;
+  tint: string;
+}
+
+const LOGIN_ACCENT_PRESETS: Record<string, { light: LoginAccentVariant; dark: LoginAccentVariant }> = {
+  red: { light: { a1: "#803743", a2: "#c55363", a: "#c55363", tint: "#fdecee" }, dark: { a1: "#df7583", a2: "#d35063", a: "#d65a6c", tint: "#38191d" } },
+  orange: { light: { a1: "#8c4730", a2: "#c36b3e", a: "#c36b3e", tint: "#fff1e6" }, dark: { a1: "#de9e73", a2: "#d0824f", a: "#d68c5c", tint: "#3a2210" } },
+  gold: { light: { a1: "#7a5428", a2: "#a88130", a: "#a88130", tint: "#fef9e0" }, dark: { a1: "#dec073", a2: "#b59533", a: "#caa759", tint: "#332b10" } },
+  green: { light: { a1: "#2a613f", a2: "#368d56", a: "#368d56", tint: "#e8f9ee" }, dark: { a1: "#7ecd9e", a2: "#409d62", a: "#56b977", tint: "#122a1c" } },
+  teal: { light: { a1: "#245a57", a2: "#2c7f78", a: "#2c7f78", tint: "#e3f8f5" }, dark: { a1: "#71cdbe", a2: "#329085", a: "#4baca0", tint: "#0f2b29" } },
+  blue: { light: { a1: "#374a80", a2: "#5679c4", a: "#5679c4", tint: "#e8f0fe" }, dark: { a1: "#98b4e7", a2: "#5985ce", a: "#749cdc", tint: "#16233d" } },
+  purple: { light: { a1: "#6842a5", a2: "#8c67ca", a: "#8c67ca", tint: "#f2eafd" }, dark: { a1: "#c3acec", a2: "#a26ed4", a: "#b28cde", tint: "#2a1f3d" } },
+  pink: { light: { a1: "#8f3559", a2: "#b85481", a: "#b85481", tint: "#fdeaf3" }, dark: { a1: "#eba9c4", a2: "#c96194", a: "#d884b0", tint: "#3a1a29" } },
+};
+const LOGIN_ACCENT_ORDER = ["red", "orange", "gold", "green", "teal", "blue", "purple", "pink"];
+const DEFAULT_LOGIN_ACCENT = "red";
+
+function hexToHsl(hex: string): [number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return [h, s * 100, l * 100];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+interface LoginSurfaceVars {
+  "--login-accent-1": string;
+  "--login-accent-2": string;
+  "--login-accent": string;
+  "--login-tint": string;
+  "--login-bg": string;
+  "--login-surface": string;
+  "--login-border": string;
+}
+
+function loginAccentVars(key: string, mode: "light" | "dark"): LoginSurfaceVars {
+  const preset = LOGIN_ACCENT_PRESETS[key] ?? LOGIN_ACCENT_PRESETS[DEFAULT_LOGIN_ACCENT];
+  const v = preset[mode];
+  const [hue] = hexToHsl(v.a1);
+  const surface =
+    mode === "dark"
+      ? { bg: hslToHex(hue, 15, 7.8), surface: hslToHex(hue, 17, 11.4), border: hslToHex(hue, 20, 18.6) }
+      : { bg: hslToHex(hue, 38.5, 97.5), surface: "#ffffff", border: hslToHex(hue, 21, 90.5) };
+  return {
+    "--login-accent-1": v.a1,
+    "--login-accent-2": v.a2,
+    "--login-accent": v.a,
+    "--login-tint": v.tint,
+    "--login-bg": surface.bg,
+    "--login-surface": surface.surface,
+    "--login-border": surface.border,
+  };
+}
 
 // The brand mark's dense dot-cluster pattern, ported verbatim from the
 // design mockup — same circles/opacities, just re-expressed as JSX.
@@ -153,6 +248,18 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
 
+  const [accentKey, setAccentKey] = useState(DEFAULT_LOGIN_ACCENT);
+  const [accentOpen, setAccentOpen] = useState(false);
+  const accentPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (accentPickerRef.current && !accentPickerRef.current.contains(e.target as Node)) setAccentOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const initial = readStoredTheme();
     setTheme(initial);
@@ -169,7 +276,23 @@ function LoginForm() {
     } catch {
       // ignore malformed/unavailable localStorage
     }
+    try {
+      const savedAccent = localStorage.getItem(LOGIN_ACCENT_KEY);
+      if (savedAccent && LOGIN_ACCENT_PRESETS[savedAccent]) setAccentKey(savedAccent);
+    } catch {
+      // ignore
+    }
   }, []);
+
+  function pickAccent(key: string) {
+    setAccentKey(key);
+    setAccentOpen(false);
+    try {
+      localStorage.setItem(LOGIN_ACCENT_KEY, key);
+    } catch {
+      // ignore
+    }
+  }
 
   // This page has its own [data-login-theme] token set (see globals.css),
   // separate from the shared --accent one applyTheme() writes to
@@ -248,9 +371,10 @@ function LoginForm() {
   }
 
   const themeMode = theme?.mode ?? "light";
+  const accentVars = loginAccentVars(accentKey, themeMode);
 
   return (
-    <div className="login-page" data-login-theme={themeMode}>
+    <div className="login-page" data-login-theme={themeMode} style={accentVars as React.CSSProperties}>
       <div className="login-top-controls">
         <button className="login-lang-toggle" type="button" onClick={toggleLang}>
           {lang === "zh" ? "EN" : "中文"}
@@ -267,6 +391,33 @@ function LoginForm() {
             </svg>
           )}
         </button>
+        <div className="login-accent-picker" ref={accentPickerRef}>
+          <button
+            className="login-theme-toggle login-accent-swatch-btn"
+            type="button"
+            onClick={() => setAccentOpen((v) => !v)}
+            aria-label="Accent color"
+          >
+            <span className="login-accent-dot" />
+          </button>
+          {accentOpen && (
+            <div className="login-accent-popover">
+              <div className="login-accent-popover-label">{lang === "zh" ? "主色" : "Accent color"}</div>
+              <div className="login-accent-swatch-grid">
+                {LOGIN_ACCENT_ORDER.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`login-accent-swatch${key === accentKey ? " active" : ""}`}
+                    style={{ background: LOGIN_ACCENT_PRESETS[key].light.a2 }}
+                    onClick={() => pickAccent(key)}
+                    aria-label={key}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <DotField corner="tr" />
