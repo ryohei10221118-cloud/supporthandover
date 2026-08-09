@@ -302,16 +302,17 @@ function CommentThread({
   onSubmitComment: () => void;
 }) {
   const isExpanded = expanded.has(cellKey);
-  // Mockup behavior (layoutCommentClamp): a collapsed thread shows only its
-  // first comment, and the show-more toggle appears whenever there's more
-  // than one — threads aren't clamped by pixel height the way plain text
-  // cells are, so a single long comment stays fully readable.
+  // Collapsed threads show only the first comment (the mockup's
+  // layoutCommentClamp) AND cap its height, so a single very long update
+  // can't blow the row open either — the mockup's sample comments were all
+  // short, so only real data exposes that second case.
   const visible = isExpanded ? comments : comments.slice(0, 1);
+  const canExpand = comments.length > 1 || (comments.length > 0 && isVisuallyLong(comments[0].body));
 
   return (
     <td className="comment-thread">
       {comments.length > 0 && (
-        <div className="cell-clip">
+        <div className={`cell-clip${isExpanded ? " expanded" : ""}`}>
           {visible.map((c) => {
             const entryKey = `${cellKey}-${c.id}`;
             const isEditingThis = editingId === c.id;
@@ -349,7 +350,7 @@ function CommentThread({
           })}
         </div>
       )}
-      {comments.length > 1 && (
+      {canExpand && (
         <button type="button" className="show-more-btn" onClick={() => onToggleClamp(cellKey)}>
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
@@ -945,7 +946,7 @@ export default function SupaBoard({
           </td>
         );
       case "cs":
-        return <td key={colKey}>{c.cs}</td>;
+        return <ClampedCell key={colKey} text={c.cs} cellKey={`${rowKey}-cs`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
       case "op":
         return <ClampedCell key={colKey} text={c.op ?? ""} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
       case "note":

@@ -695,8 +695,14 @@ button.primary:disabled {
   text-decoration: underline;
 }
 
+/* The label can be long; the full value is always available in the edit
+   modal, so it trims here rather than growing the row. */
 .link-content {
-  display: inline;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 .link-edit-btn {
@@ -1619,6 +1625,18 @@ tbody tr:nth-child(even) {
 
 .comment-thread .cell-clip > *:first-child {
   padding-right: 58px;
+}
+
+/* Collapsed threads are capped in height as well as trimmed to one comment,
+   so a single long update can't stretch the row. */
+.cell-clip {
+  max-height: 92px;
+  overflow: hidden;
+}
+
+.cell-clip.expanded {
+  max-height: none;
+  overflow: visible;
 }
 
 .comment {
