@@ -21,9 +21,9 @@ export default async function T1hoTestPage() {
 
   return (
     <main className="page">
-      <h1>T1 HO 案件看板（Supabase 测试版）</h1>
+      <h1>T1 HO 案件看板（Supabase 測試版）</h1>
       <p className="subtitle">
-        这个页面读的是 Supabase，不是 Google Sheet——只是用来核对资料是否正确，正式看板（首页）目前不受影响。
+        這個頁面讀的是 Supabase，不是 Google Sheet——只是用來核對資料是否正確，正式看板（首頁）目前不受影響。
       </p>
       <SupaBoard board="t1ho" initialCases={initialCases} initialError={error} />
     </main>

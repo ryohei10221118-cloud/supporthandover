@@ -20,7 +20,7 @@ export default async function HoPage() {
   return (
     <main className="page">
       <h1>HO 案件看板</h1>
-      <p className="subtitle">依 Type / Classification / 状态筛选目前追踪中的 HO 案件</p>
+      <p className="subtitle">依 Type / Classification / 狀態篩選目前追蹤中的 HO 案件</p>
       <SupaBoard board="ho" initialCases={initialCases} initialError={error} />
     </main>
   );

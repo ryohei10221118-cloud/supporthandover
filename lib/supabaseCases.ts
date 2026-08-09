@@ -195,9 +195,7 @@ export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[
       comments,
       latestNote: comments.length > 0 ? comments[comments.length - 1].body : "",
       isCompleted: completed,
-      // Only flagging overdue for T1 HO for now — HO doesn't have a confirmed
-      // staleness threshold yet, so we show days-open there without a red flag.
-      isOverdue: board === "t1ho" && !completed && daysOpen !== null && daysOpen > OVERDUE_DAYS,
+      isOverdue: !completed && daysOpen !== null && daysOpen > OVERDUE_DAYS,
       daysOpen,
     };
   });

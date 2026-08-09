@@ -1130,6 +1130,21 @@ tr.overdue td {
   text-decoration: underline;
 }
 
+/* pin the "+ update" trigger to the top-right of the reply cell, in line
+   with the first row of content, so an empty thread doesn't need its own
+   extra line */
+.note-cell.has-trigger {
+  position: relative;
+  padding-right: 54px;
+}
+
+.note-cell.has-trigger .comment-trigger {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  margin-top: 0;
+}
+
 .comment-row {
   background: var(--bg);
 }

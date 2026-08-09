@@ -92,6 +92,8 @@ const STRINGS = {
   editContentRequired: { zh: "請輸入內容", en: "Please enter some content" },
   updateFailed: { zh: "更新失敗", en: "Update failed" },
   edit: { zh: "✎ 編輯", en: "✎ Edit" },
+  showMore: { zh: "⋯ 顯示更多", en: "⋯ Show more" },
+  showLess: { zh: "▲ 收合", en: "▲ Show less" },
   changeStatus: { zh: "變更狀態", en: "Change status" },
   noMatchingCases: { zh: "沒有符合條件的案件", en: "No matching cases" },
   perPage: { zh: "每頁顯示", en: "Per page" },
@@ -279,11 +281,13 @@ function ClampedCell({
   cellKey,
   expanded,
   onToggle,
+  lang,
 }: {
   text: string;
   cellKey: string;
   expanded: Set<string>;
   onToggle: (key: string) => void;
+  lang: Lang;
 }) {
   const isLong = isVisuallyLong(text);
   const isExpanded = expanded.has(cellKey);
@@ -292,7 +296,7 @@ function ClampedCell({
       <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
       {isLong && (
         <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
-          {isExpanded ? "▲ Show less" : "⋯ Show more"}
+          {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
     </td>
@@ -338,6 +342,9 @@ function ReplyCell({
   onCancelEdit,
   onSubmitEdit,
   lang,
+  canComment,
+  triggerOpen,
+  onToggleTrigger,
 }: {
   reply: string;
   cellKey: string;
@@ -353,68 +360,76 @@ function ReplyCell({
   onCancelEdit: () => void;
   onSubmitEdit: (originalEntry: string) => void;
   lang: Lang;
+  canComment: boolean;
+  triggerOpen: boolean;
+  onToggleTrigger: () => void;
 }) {
   const entries = reply.trim() ? reply.split(/\n\n+/) : [];
   const isLong = isVisuallyLong(reply);
   const isExpanded = expanded.has(cellKey);
 
-  if (entries.length === 0) return <td className="note-cell" />;
-
   return (
-    <td className="note-cell">
-      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
-        {entries.map((entry, i) => {
-          const entryKey = `${cellKey}-${i}`;
-          const editable = myName ? parseEditableEntry(entry) : null;
-          const isEditingThis = editingKey === entryKey;
+    <td className={`note-cell${canComment ? " has-trigger" : ""}`}>
+      {entries.length > 0 && (
+        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
+          {entries.map((entry, i) => {
+            const entryKey = `${cellKey}-${i}`;
+            const editable = myName ? parseEditableEntry(entry) : null;
+            const isEditingThis = editingKey === entryKey;
 
-          return (
-            <div key={entryKey} className="reply-entry">
-              {isEditingThis ? (
-                <>
-                  <textarea
-                    className="comment-textarea"
-                    value={editDraft}
-                    onChange={(e) => onEditDraftChange(e.target.value)}
-                    rows={3}
-                  />
-                  <div className="comment-actions">
-                    <button
-                      type="button"
-                      className="comment-submit"
-                      disabled={editSubmitting}
-                      onClick={() => onSubmitEdit(entry)}
-                    >
-                      {editSubmitting ? t(lang, "saving") : t(lang, "save")}
-                    </button>
-                    <button type="button" className="link-btn" onClick={onCancelEdit}>
-                      {t(lang, "cancel")}
-                    </button>
-                  </div>
-                  {editError && <div className="comment-error">{editError}</div>}
-                </>
-              ) : (
-                <>
-                  {!hasOwnFormatHeader(entry) && <span className="reply-support-tag">Support</span>}
-                  {linkify(entry, entryKey)}
-                  {editable && (
-                    <button
-                      type="button"
-                      className="note-toggle"
-                      onClick={() => onStartEdit(entryKey, editable.message)}
-                    >
-                      {t(lang, "edit")}
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {isLong && (
+            return (
+              <div key={entryKey} className="reply-entry">
+                {isEditingThis ? (
+                  <>
+                    <textarea
+                      className="comment-textarea"
+                      value={editDraft}
+                      onChange={(e) => onEditDraftChange(e.target.value)}
+                      rows={3}
+                    />
+                    <div className="comment-actions">
+                      <button
+                        type="button"
+                        className="comment-submit"
+                        disabled={editSubmitting}
+                        onClick={() => onSubmitEdit(entry)}
+                      >
+                        {editSubmitting ? t(lang, "saving") : t(lang, "save")}
+                      </button>
+                      <button type="button" className="link-btn" onClick={onCancelEdit}>
+                        {t(lang, "cancel")}
+                      </button>
+                    </div>
+                    {editError && <div className="comment-error">{editError}</div>}
+                  </>
+                ) : (
+                  <>
+                    {!hasOwnFormatHeader(entry) && <span className="reply-support-tag">Support</span>}
+                    {linkify(entry, entryKey)}
+                    {editable && (
+                      <button
+                        type="button"
+                        className="note-toggle"
+                        onClick={() => onStartEdit(entryKey, editable.message)}
+                      >
+                        {t(lang, "edit")}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {isLong && entries.length > 0 && (
         <button type="button" className="note-toggle" onClick={() => onToggleClamp(cellKey)}>
-          {isExpanded ? "▲ Show less" : "⋯ Show more"}
+          {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
+        </button>
+      )}
+      {canComment && (
+        <button type="button" className="comment-trigger" onClick={onToggleTrigger}>
+          {triggerOpen ? t(lang, "cancel") : t(lang, "comment")}
         </button>
       )}
     </td>
@@ -774,18 +789,14 @@ export default function CaseBoard({
     [sorted, currentPage, pageSize]
   );
 
-  // All four summary stats only count cases with a recognized 部門 value —
-  // blank/legacy/typo department values are excluded from official totals.
-  // 總案件數 is the overall total within that scope; the other three follow
-  // the current department/status/date/search filter on top of it.
-  const totalCount = cases.filter((c) => isValidDept(c.department)).length;
+  // All summary stats and the "篩選出 X 筆" count only count cases with a
+  // recognized 部門 value — blank/legacy/typo department values still show
+  // in the table below, they just aren't counted here. All of them reflect
+  // the currently active department/status/date/search filter.
+  const filteredValidCount = filtered.filter((c) => isValidDept(c.department)).length;
+  const totalCount = filteredValidCount;
   const openCount = filtered.filter((c) => !c.isCompleted && isValidDept(c.department)).length;
   const completedCount = filtered.filter((c) => c.isCompleted && isValidDept(c.department)).length;
-  // Same recognized-department scope as the four stats above, so "篩選出 X
-  // 筆" doesn't show a bigger number than 總案件數 when nothing else is
-  // filtered — rows with an unrecognized department still show in the
-  // table below, they just aren't counted here or in the stats.
-  const filteredValidCount = filtered.filter((c) => isValidDept(c.department)).length;
   const overdueCount = filtered.filter((c) => c.isOverdue && isValidDept(c.department)).length;
 
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -1034,7 +1045,7 @@ export default function CaseBoard({
         return <td key={colKey}>{c.cs}</td>;
       case "op":
         return (
-          <ClampedCell key={colKey} text={c.op} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} />
+          <ClampedCell key={colKey} text={c.op} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />
         );
       case "note":
         return (
@@ -1044,6 +1055,7 @@ export default function CaseBoard({
             cellKey={`${rowKey}-note`}
             expanded={expandedNotes}
             onToggle={toggleNote}
+            lang={lang}
           />
         );
       case "reply":
@@ -1064,6 +1076,9 @@ export default function CaseBoard({
             onCancelEdit={cancelEdit}
             onSubmitEdit={(entry) => submitEdit(c, entry)}
             lang={lang}
+            canComment={!!me}
+            triggerOpen={openCommentKey === rowKey}
+            onToggleTrigger={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
           />
         );
       case "status": {
@@ -1080,15 +1095,6 @@ export default function CaseBoard({
             />
             {quickStatusErrorRowKey === rowKey && quickStatusError && (
               <div className="comment-error">{quickStatusError}</div>
-            )}
-            {me && (
-              <button
-                type="button"
-                className="comment-trigger"
-                onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
-              >
-                {openCommentKey === rowKey ? t(lang, "cancel") : t(lang, "comment")}
-              </button>
             )}
           </td>
         );

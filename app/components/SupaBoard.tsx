@@ -3,6 +3,65 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
+import { LANG_STORAGE_KEY } from "@/lib/theme";
+
+// --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
+// the same localStorage key; each board reads it once on mount) ---
+type Lang = "zh" | "en";
+
+type StringEntry = string | ((...args: never[]) => string);
+const STRINGS = {
+  refresh: { zh: "重新整理", en: "Refresh" },
+  refreshing: { zh: "更新中...", en: "Refreshing..." },
+  totalCases: { zh: "總案件數", en: "Total cases" },
+  openCases: { zh: "待追蹤(未完成)", en: "Open (not completed)" },
+  completedCases: { zh: "已完成", en: "Completed" },
+  overdueCases: { zh: "逾期(超過3天未完成)", en: "Overdue (>3 days open)" },
+  allClassification: { zh: "全部 Classification", en: "All classifications" },
+  allStatuses: { zh: "全部狀態", en: "All statuses" },
+  allPriority: { zh: "全部 Priority", en: "All priorities" },
+  allIssueTags: { zh: "全部 Issue Tag", en: "All issue tags" },
+  nSelected: { zh: (n: number) => `已選 ${n} 項`, en: (n: number) => `${n} selected` },
+  clearAllFilters: { zh: "清除篩選", en: "Clear filters" },
+  searchPlaceholder: { zh: "搜尋序列 / OP / CS / 內容...", en: "Search seq / OP / CS / content..." },
+  resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
+  newestFirst: { zh: "↓新到舊", en: "↓Newest" },
+  oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
+  daysAgo: { zh: (n: number) => `${n}天前`, en: (n: number) => `${n}d ago` },
+  overdueTag: { zh: "逾期", en: "Overdue" },
+  updateTrigger: { zh: "+更新", en: "+ Update" },
+  cancel: { zh: "取消", en: "Cancel" },
+  editedTag: { zh: "已編輯", en: "Edited" },
+  editComment: { zh: "編輯", en: "Edit" },
+  commentPlaceholder: {
+    zh: "輸入留言，會加到「追蹤狀況/更新備註」的最下方",
+    en: "Type your comment — it'll be added to the bottom of Tracking / Update notes",
+  },
+  submitting: { zh: "送出中...", en: "Submitting..." },
+  submitComment: { zh: "送出留言", en: "Submit comment" },
+  commentRequired: { zh: "請輸入留言內容", en: "Please enter a comment" },
+  commentFailed: { zh: "留言失敗", en: "Failed to submit" },
+  saveFailed: { zh: "儲存失敗", en: "Failed to save" },
+  saving: { zh: "儲存中...", en: "Saving..." },
+  save: { zh: "儲存", en: "Save" },
+  noMatchingCases: { zh: "沒有符合條件的案件", en: "No matching cases" },
+  perPage: { zh: "每頁顯示", en: "Per page" },
+  pageIndicator: { zh: (page: number, total: number) => `${page} / ${total}`, en: (page: number, total: number) => `${page} / ${total}` },
+  showMore: { zh: "⋯ 顯示更多", en: "⋯ Show more" },
+  showLess: { zh: "▲ 收合", en: "▲ Show less" },
+  loadError: { zh: (err: string) => `目前無法讀取Supabase資料。原因：${err}`, en: (err: string) => `Unable to load Supabase data right now. Reason: ${err}` },
+  allGroupDept: { zh: "全部部門", en: "All departments" },
+  allGroupType: { zh: "全部 Type", en: "All types" },
+} satisfies Record<string, Record<Lang, StringEntry>>;
+
+function t<K extends keyof typeof STRINGS>(
+  lang: Lang,
+  key: K,
+  ...args: (typeof STRINGS)[K]["en"] extends (...a: infer A) => string ? A : []
+): string {
+  const entry = STRINGS[key][lang] as StringEntry;
+  return typeof entry === "function" ? (entry as (...a: never[]) => string)(...(args as never[])) : entry;
+}
 
 const T1HO_STATUS_ORDER = ["pending", "follow up", "move to ho", "已完成"];
 const HO_STATUS_ORDER = ["follow up", "procedure", "note", "done", "closed for us"];
@@ -98,21 +157,21 @@ const HO_COLUMNS: ColumnKey[] = [
   "issueTag",
 ];
 
-const COLUMN_LABELS: Record<ColumnKey, { t1ho: string; ho: string }> = {
-  seq: { t1ho: "序列", ho: "ID" },
-  date: { t1ho: "日期", ho: "日期" },
-  group: { t1ho: "部門", ho: "Type" },
-  classification: { t1ho: "", ho: "Classification" },
-  cs: { t1ho: "CS", ho: "CS" },
-  op: { t1ho: "OP", ho: "OP" },
-  note: { t1ho: "內容", ho: "內容" },
-  reply: { t1ho: "追蹤狀況/更新備註", ho: "追蹤狀況/更新備註" },
-  relatedTicket: { t1ho: "", ho: "Related ticket" },
-  updateDate: { t1ho: "", ho: "更新日期" },
-  noteLabel: { t1ho: "", ho: "Note" },
-  status: { t1ho: "狀態", ho: "狀態" },
-  priority: { t1ho: "", ho: "Priority" },
-  issueTag: { t1ho: "", ho: "Issue Tag" },
+const COLUMN_LABELS: Record<ColumnKey, { t1ho: Record<Lang, string>; ho: Record<Lang, string> }> = {
+  seq: { t1ho: { zh: "序列", en: "Seq" }, ho: { zh: "ID", en: "ID" } },
+  date: { t1ho: { zh: "日期", en: "Date" }, ho: { zh: "日期", en: "Date" } },
+  group: { t1ho: { zh: "部門", en: "Department" }, ho: { zh: "Type", en: "Type" } },
+  classification: { t1ho: { zh: "", en: "" }, ho: { zh: "Classification", en: "Classification" } },
+  cs: { t1ho: { zh: "CS", en: "CS" }, ho: { zh: "CS", en: "CS" } },
+  op: { t1ho: { zh: "OP", en: "OP" }, ho: { zh: "OP", en: "OP" } },
+  note: { t1ho: { zh: "內容", en: "Note" }, ho: { zh: "內容", en: "Note" } },
+  reply: { t1ho: { zh: "追蹤狀況/更新備註", en: "Tracking / Update notes" }, ho: { zh: "追蹤狀況/更新備註", en: "Tracking / Update notes" } },
+  relatedTicket: { t1ho: { zh: "", en: "" }, ho: { zh: "Related ticket", en: "Related ticket" } },
+  updateDate: { t1ho: { zh: "", en: "" }, ho: { zh: "更新日期", en: "Update date" } },
+  noteLabel: { t1ho: { zh: "", en: "" }, ho: { zh: "Note", en: "Note" } },
+  status: { t1ho: { zh: "狀態", en: "Status" }, ho: { zh: "狀態", en: "Status" } },
+  priority: { t1ho: { zh: "", en: "" }, ho: { zh: "Priority", en: "Priority" } },
+  issueTag: { t1ho: { zh: "", en: "" }, ho: { zh: "Issue Tag", en: "Issue Tag" } },
 };
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
@@ -186,11 +245,13 @@ function ClampedCell({
   cellKey,
   expanded,
   onToggle,
+  lang,
 }: {
   text: string;
   cellKey: string;
   expanded: Set<string>;
   onToggle: (key: string) => void;
+  lang: Lang;
 }) {
   if (!text) return <td className="note-cell" />;
   const isLong = isVisuallyLong(text);
@@ -200,7 +261,7 @@ function ClampedCell({
       <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
       {isLong && (
         <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
-          {isExpanded ? "▲ 收合" : "⋯ 顯示更多"}
+          {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
     </td>
@@ -220,6 +281,9 @@ function CommentThread({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
+  triggerOpen,
+  onToggleTrigger,
+  lang,
 }: {
   comments: SupaComment[];
   cellKey: string;
@@ -233,60 +297,66 @@ function CommentThread({
   onStartEdit: (id: string, message: string) => void;
   onCancelEdit: () => void;
   onSubmitEdit: (id: string) => void;
+  triggerOpen: boolean;
+  onToggleTrigger: () => void;
+  lang: Lang;
 }) {
   const combinedText = comments.map((c) => c.body).join("\n\n");
   const isLong = isVisuallyLong(combinedText);
   const isExpanded = expanded.has(cellKey);
 
-  if (comments.length === 0) return <td className="note-cell" />;
-
   return (
-    <td className="note-cell">
-      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
-        {comments.map((c) => {
-          const entryKey = `${cellKey}-${c.id}`;
-          const isEditingThis = editingId === c.id;
-          return (
-            <div key={entryKey} className="reply-entry">
-              {isEditingThis ? (
-                <>
-                  <textarea
-                    className="comment-textarea"
-                    value={editDraft}
-                    onChange={(e) => onEditDraftChange(e.target.value)}
-                    rows={3}
-                  />
-                  <div className="comment-actions">
-                    <button type="button" className="comment-submit" disabled={editSubmitting} onClick={() => onSubmitEdit(c.id)}>
-                      {editSubmitting ? "儲存中..." : "儲存"}
+    <td className="note-cell has-trigger">
+      {comments.length > 0 && (
+        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
+          {comments.map((c) => {
+            const entryKey = `${cellKey}-${c.id}`;
+            const isEditingThis = editingId === c.id;
+            return (
+              <div key={entryKey} className="reply-entry">
+                {isEditingThis ? (
+                  <>
+                    <textarea
+                      className="comment-textarea"
+                      value={editDraft}
+                      onChange={(e) => onEditDraftChange(e.target.value)}
+                      rows={3}
+                    />
+                    <div className="comment-actions">
+                      <button type="button" className="comment-submit" disabled={editSubmitting} onClick={() => onSubmitEdit(c.id)}>
+                        {editSubmitting ? t(lang, "saving") : t(lang, "save")}
+                      </button>
+                      <button type="button" className="link-btn" onClick={onCancelEdit}>
+                        {t(lang, "cancel")}
+                      </button>
+                    </div>
+                    {editError && <div className="comment-error">{editError}</div>}
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <strong>{formatTimestampUTC8(c.createdAt)}</strong> {displayNameFromEmail(c.authorEmail)}
+                      {c.editedAt && <span className="reply-support-tag">{t(lang, "editedTag")}</span>}
+                    </div>
+                    {linkify(c.body, entryKey)}
+                    <button type="button" className="note-toggle" onClick={() => onStartEdit(c.id, c.body)}>
+                      {t(lang, "editComment")}
                     </button>
-                    <button type="button" className="link-btn" onClick={onCancelEdit}>
-                      取消
-                    </button>
-                  </div>
-                  {editError && <div className="comment-error">{editError}</div>}
-                </>
-              ) : (
-                <>
-                  <div>
-                    <strong>{formatTimestampUTC8(c.createdAt)}</strong> {displayNameFromEmail(c.authorEmail)}
-                    {c.editedAt && <span className="reply-support-tag">已編輯</span>}
-                  </div>
-                  {linkify(c.body, entryKey)}
-                  <button type="button" className="note-toggle" onClick={() => onStartEdit(c.id, c.body)}>
-                    編輯
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {isLong && (
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {isLong && comments.length > 0 && (
         <button type="button" className="note-toggle" onClick={() => onToggleClamp(cellKey)}>
-          {isExpanded ? "▲ 收合" : "⋯ 顯示更多"}
+          {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
+      <button type="button" className="comment-trigger" onClick={onToggleTrigger}>
+        {triggerOpen ? t(lang, "cancel") : t(lang, "updateTrigger")}
+      </button>
     </td>
   );
 }
@@ -296,11 +366,18 @@ function MultiSelect({
   options,
   selected,
   onChange,
+  lang,
+  labelFor,
 }: {
   allLabel: string;
   options: string[];
   selected: string[];
   onChange: (next: string[]) => void;
+  lang: Lang;
+  // Lets a caller show a translated label for an option (e.g. the synthetic
+  // "已完成" status category) while the underlying value used for
+  // filtering/state stays the same in every language.
+  labelFor?: (opt: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -313,7 +390,8 @@ function MultiSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const summary = selected.length === 0 ? allLabel : selected.length === 1 ? selected[0] : `已選 ${selected.length} 項`;
+  const summary =
+    selected.length === 0 ? allLabel : selected.length === 1 ? (labelFor ? labelFor(selected[0]) : selected[0]) : t(lang, "nSelected", selected.length);
 
   function toggle(opt: string) {
     onChange(selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt]);
@@ -333,7 +411,7 @@ function MultiSelect({
           {options.map((opt) => (
             <label key={opt} className="multiselect-option">
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
-              {opt}
+              {labelFor ? labelFor(opt) : opt}
             </label>
           ))}
         </div>
@@ -346,6 +424,16 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
   const [cases, setCases] = useState(initialCases);
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
+
+  const [lang, setLang] = useState<Lang>("zh");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LANG_STORAGE_KEY);
+      if (saved === "en" || saved === "zh") setLang(saved);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const [groupFilter, setGroupFilter] = useState<string[]>([]); // 部門 (t1ho) / Type (ho)
   const [classFilter, setClassFilter] = useState<string[]>([]); // Classification (ho only)
@@ -393,7 +481,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
   async function submitComment(c: SupaCaseRow) {
     if (!commentDraft.trim()) {
-      setCommentError("請輸入留言內容");
+      setCommentError(t(lang, "commentRequired"));
       return;
     }
     setCommentSubmitting(true);
@@ -406,7 +494,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       });
       const data = await res.json();
       if (!res.ok) {
-        setCommentError(data.error || "留言失敗");
+        setCommentError(data.error || t(lang, "commentFailed"));
         return;
       }
       const newComment: SupaComment = data.comment;
@@ -430,7 +518,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
   async function submitEdit(caseId: string, commentId: string) {
     if (!editDraft.trim()) {
-      setEditError("請輸入留言內容");
+      setEditError(t(lang, "commentRequired"));
       return;
     }
     setEditSubmitting(true);
@@ -443,7 +531,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       });
       const data = await res.json();
       if (!res.ok) {
-        setEditError(data.error || "儲存失敗");
+        setEditError(data.error || t(lang, "saveFailed"));
         return;
       }
       setCases((prev) =>
@@ -464,7 +552,6 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     }
   }
 
-  const groupLabel = board === "t1ho" ? "部門" : "Type";
   const groupValue = (c: SupaCaseRow) => (board === "t1ho" ? c.dept : c.hoType) ?? "";
 
   const groups = useMemo(
@@ -557,9 +644,9 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     [sorted, currentPage, pageSize]
   );
 
-  const openCount = cases.filter((c) => !c.isCompleted).length;
-  const completedCount = cases.filter((c) => c.isCompleted).length;
-  const overdueCount = cases.filter((c) => c.isOverdue).length;
+  const openCount = filtered.filter((c) => !c.isCompleted).length;
+  const completedCount = filtered.filter((c) => c.isCompleted).length;
+  const overdueCount = filtered.filter((c) => c.isOverdue).length;
 
   // --- Draggable column order / resizable column widths ---
   const columns = board === "t1ho" ? T1HO_COLUMNS : HO_COLUMNS;
@@ -645,7 +732,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           <td key={colKey}>
             {c.date}
             {c.daysOpen !== null && !c.isCompleted ? (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{t(lang, "daysAgo", c.daysOpen)}</div>
             ) : null}
           </td>
         );
@@ -656,9 +743,9 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       case "cs":
         return <td key={colKey}>{c.cs}</td>;
       case "op":
-        return <ClampedCell key={colKey} text={c.op ?? ""} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} />;
+        return <ClampedCell key={colKey} text={c.op ?? ""} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
       case "note":
-        return <ClampedCell key={colKey} text={c.content} cellKey={`${rowKey}-note`} expanded={expandedNotes} onToggle={toggleNote} />;
+        return <ClampedCell key={colKey} text={c.content} cellKey={`${rowKey}-note`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
       case "reply":
         return (
           <CommentThread
@@ -675,6 +762,9 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
             onStartEdit={startEdit}
             onCancelEdit={cancelEdit}
             onSubmitEdit={(commentId) => submitEdit(c.id, commentId)}
+            triggerOpen={openCommentKey === rowKey}
+            onToggleTrigger={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
+            lang={lang}
           />
         );
       case "relatedTicket":
@@ -682,19 +772,12 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       case "updateDate":
         return <td key={colKey}>{c.updateDate}</td>;
       case "noteLabel":
-        return <td key={colKey}>{c.noteLabel}</td>;
+        return <ClampedCell key={colKey} text={c.noteLabel ?? ""} cellKey={`${rowKey}-noteLabel`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
       case "status":
         return (
           <td key={colKey}>
             <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-            {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
-            <button
-              type="button"
-              className="comment-trigger"
-              onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
-            >
-              {openCommentKey === rowKey ? "取消" : "+更新"}
-            </button>
+            {c.isOverdue && <span className="badge overdue-tag">{t(lang, "overdueTag")}</span>}
           </td>
         );
       case "priority":
@@ -726,12 +809,12 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
                 className="comment-textarea"
                 value={commentDraft}
                 onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder="輸入留言，會加到「追蹤狀況/更新備註」的最下方"
+                placeholder={t(lang, "commentPlaceholder")}
                 rows={3}
               />
               <div className="comment-actions">
                 <button type="button" className="comment-submit" onClick={() => submitComment(c)} disabled={commentSubmitting}>
-                  {commentSubmitting ? "送出中..." : "送出留言"}
+                  {commentSubmitting ? t(lang, "submitting") : t(lang, "submitComment")}
                 </button>
               </div>
               {commentError && <div className="comment-error">{commentError}</div>}
@@ -756,40 +839,57 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
   return (
     <div>
-      {error && <div className="banner">目前无法读取Supabase资料。原因：{error}</div>}
+      {error && <div className="banner">{t(lang, "loadError", error)}</div>}
 
       <div className="summary">
         <div className="stat">
-          <div className="value">{cases.length}</div>
-          <div className="label">总案件数</div>
+          <div className="value">{filtered.length}</div>
+          <div className="label">{t(lang, "totalCases")}</div>
         </div>
         <div className="stat">
           <div className="value">{openCount}</div>
-          <div className="label">待追踪(未完成)</div>
+          <div className="label">{t(lang, "openCases")}</div>
         </div>
         <div className="stat">
           <div className="value">{completedCount}</div>
-          <div className="label">已完成</div>
+          <div className="label">{t(lang, "completedCases")}</div>
         </div>
-        {board === "t1ho" && (
-          <div className="stat overdue">
-            <div className="value">{overdueCount}</div>
-            <div className="label">逾期(超过3天未完成)</div>
-          </div>
-        )}
+        <div className="stat overdue">
+          <div className="value">{overdueCount}</div>
+          <div className="label">{t(lang, "overdueCases")}</div>
+        </div>
       </div>
 
       <div className="toolbar">
         <div className="filters">
-          <MultiSelect allLabel={`全部${groupLabel}`} options={groups} selected={groupFilter} onChange={setGroupFilter} />
+          <MultiSelect
+            allLabel={t(lang, board === "t1ho" ? "allGroupDept" : "allGroupType")}
+            options={groups}
+            selected={groupFilter}
+            onChange={setGroupFilter}
+            lang={lang}
+          />
           {board === "ho" && (
-            <MultiSelect allLabel="全部 Classification" options={classifications} selected={classFilter} onChange={setClassFilter} />
+            <MultiSelect
+              allLabel={t(lang, "allClassification")}
+              options={classifications}
+              selected={classFilter}
+              onChange={setClassFilter}
+              lang={lang}
+            />
           )}
-          <MultiSelect allLabel="全部狀態" options={statuses} selected={statusFilter} onChange={setStatusFilter} />
-          <MultiSelect allLabel="全部 Priority" options={priorities} selected={priorityFilter} onChange={setPriorityFilter} />
-          <MultiSelect allLabel="全部 Issue Tag" options={issueTags} selected={issueTagFilter} onChange={setIssueTagFilter} />
+          <MultiSelect
+            allLabel={t(lang, "allStatuses")}
+            options={statuses}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            lang={lang}
+            labelFor={(opt) => (opt === COMPLETED_LABEL ? t(lang, "completedCases") : opt)}
+          />
+          <MultiSelect allLabel={t(lang, "allPriority")} options={priorities} selected={priorityFilter} onChange={setPriorityFilter} lang={lang} />
+          <MultiSelect allLabel={t(lang, "allIssueTags")} options={issueTags} selected={issueTagFilter} onChange={setIssueTagFilter} lang={lang} />
           <DateRangeFilter
-            lang="zh"
+            lang={lang}
             dateType={dateType}
             onDateTypeChange={setDateType}
             preset={datePreset}
@@ -823,21 +923,21 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
                 setSearch("");
               }}
             >
-              清除篩選
+              {t(lang, "clearAllFilters")}
             </button>
           )}
           <div className="search-group">
             <input
               type="text"
-              placeholder="搜尋序列 / OP / CS / 內容..."
+              placeholder={t(lang, "searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <span className="result-count">篩選出 {filtered.length} 筆</span>
+            <span className="result-count">{t(lang, "resultCount", filtered.length)}</span>
           </div>
         </div>
         <button className="refresh-btn" onClick={refresh} disabled={loading}>
-          {loading ? "更新中..." : "重新整理"}
+          {loading ? t(lang, "refreshing") : t(lang, "refresh")}
         </button>
       </div>
 
@@ -866,11 +966,11 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
                 const resizeHandle = (
                   <span className="col-resize-handle" draggable={false} onMouseDown={(e) => startColumnResize(colKey, e)} />
                 );
-                const label = board === "t1ho" ? COLUMN_LABELS[colKey].t1ho : COLUMN_LABELS[colKey].ho;
+                const label = (board === "t1ho" ? COLUMN_LABELS[colKey].t1ho : COLUMN_LABELS[colKey].ho)[lang];
                 if (colKey === "date") {
                   return (
                     <th key={colKey} className="sortable draggable-col" onClick={toggleDateSort} {...dragProps}>
-                      {label} {dateSort === "desc" ? "↓新到旧" : dateSort === "asc" ? "↑旧到新" : "↕"}
+                      {label} {dateSort === "desc" ? t(lang, "newestFirst") : dateSort === "asc" ? t(lang, "oldestFirst") : "↕"}
                       {resizeHandle}
                     </th>
                   );
@@ -889,7 +989,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={columnOrder.length} className="empty">
-                  没有符合条件的案件
+                  {t(lang, "noMatchingCases")}
                 </td>
               </tr>
             )}
@@ -899,7 +999,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
       <div className="pagination-bar">
         <div className="page-size-group">
-          每頁顯示
+          {t(lang, "perPage")}
           <select
             value={pageSize}
             onChange={(e) => {
@@ -916,9 +1016,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>
             ‹
           </button>
-          <span className="page-indicator">
-            {currentPage} / {totalPages}
-          </span>
+          <span className="page-indicator">{t(lang, "pageIndicator", currentPage, totalPages)}</span>
           <button
             type="button"
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
