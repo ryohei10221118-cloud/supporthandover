@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ACCENT_FAMILIES,
+  applyTheme,
   readStoredTheme,
   storeTheme,
   LANG_STORAGE_KEY,
@@ -25,6 +27,7 @@ const STRINGS: Record<string, Record<Lang, string>> = {
   back: { zh: "重新輸入信箱", en: "Use a different email" },
   sendFailed: { zh: "驗證碼寄送失敗", en: "Failed to send code" },
   verifyFailed: { zh: "驗證失敗", en: "Verification failed" },
+  accentColor: { zh: "主色", en: "Accent color" },
 };
 
 function t(lang: Lang, key: string): string {
@@ -33,111 +36,16 @@ function t(lang: Lang, key: string): string {
 
 const SAVED_EMAILS_KEY = "t1ho_saved_emails";
 
-// This page's own accent picker — separate from the shade/accent picker on
-// the board pages (ThemePicker in CaseBoard.tsx / lib/theme.ts). The login
-// screen is a distinct branded surface, so it gets the mockup's original
-// 8-color palette, each also re-tinting --login-bg/--login-surface/--login-border
-// (not just the accent itself) so the whole card leans into the picked hue
-// instead of just the button/link color changing.
-const LOGIN_ACCENT_KEY = "t1ho_login_accent";
-
-interface LoginAccentVariant {
-  a1: string;
-  a2: string;
-  a: string;
-  tint: string;
-}
-
-const LOGIN_ACCENT_PRESETS: Record<string, { light: LoginAccentVariant; dark: LoginAccentVariant }> = {
-  red: { light: { a1: "#803743", a2: "#c55363", a: "#c55363", tint: "#fdecee" }, dark: { a1: "#df7583", a2: "#d35063", a: "#d65a6c", tint: "#38191d" } },
-  orange: { light: { a1: "#8c4730", a2: "#c36b3e", a: "#c36b3e", tint: "#fff1e6" }, dark: { a1: "#de9e73", a2: "#d0824f", a: "#d68c5c", tint: "#3a2210" } },
-  gold: { light: { a1: "#7a5428", a2: "#a88130", a: "#a88130", tint: "#fef9e0" }, dark: { a1: "#dec073", a2: "#b59533", a: "#caa759", tint: "#332b10" } },
-  green: { light: { a1: "#2a613f", a2: "#368d56", a: "#368d56", tint: "#e8f9ee" }, dark: { a1: "#7ecd9e", a2: "#409d62", a: "#56b977", tint: "#122a1c" } },
-  teal: { light: { a1: "#245a57", a2: "#2c7f78", a: "#2c7f78", tint: "#e3f8f5" }, dark: { a1: "#71cdbe", a2: "#329085", a: "#4baca0", tint: "#0f2b29" } },
-  blue: { light: { a1: "#374a80", a2: "#5679c4", a: "#5679c4", tint: "#e8f0fe" }, dark: { a1: "#98b4e7", a2: "#5985ce", a: "#749cdc", tint: "#16233d" } },
-  purple: { light: { a1: "#6842a5", a2: "#8c67ca", a: "#8c67ca", tint: "#f2eafd" }, dark: { a1: "#c3acec", a2: "#a26ed4", a: "#b28cde", tint: "#2a1f3d" } },
-  pink: { light: { a1: "#8f3559", a2: "#b85481", a: "#b85481", tint: "#fdeaf3" }, dark: { a1: "#eba9c4", a2: "#c96194", a: "#d884b0", tint: "#3a1a29" } },
-};
-const LOGIN_ACCENT_ORDER = ["red", "orange", "gold", "green", "teal", "blue", "purple", "pink"];
-const DEFAULT_LOGIN_ACCENT = "red";
-
-function hexToHsl(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  let h = 0;
-  let s = 0;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-  }
-  return [h, s * 100, l * 100];
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100;
-  l /= 100;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - c / 2;
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  if (h < 60) [r, g, b] = [c, x, 0];
-  else if (h < 120) [r, g, b] = [x, c, 0];
-  else if (h < 180) [r, g, b] = [0, c, x];
-  else if (h < 240) [r, g, b] = [0, x, c];
-  else if (h < 300) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-interface LoginSurfaceVars {
-  "--login-accent-1": string;
-  "--login-accent-2": string;
-  "--login-accent": string;
-  "--login-tint": string;
-  "--login-bg": string;
-  "--login-surface": string;
-  "--login-border": string;
-}
-
-function loginAccentVars(key: string, mode: "light" | "dark"): LoginSurfaceVars {
-  const preset = LOGIN_ACCENT_PRESETS[key] ?? LOGIN_ACCENT_PRESETS[DEFAULT_LOGIN_ACCENT];
-  const v = preset[mode];
-  const [hue] = hexToHsl(v.a1);
-  const surface =
-    mode === "dark"
-      ? { bg: hslToHex(hue, 15, 7.8), surface: hslToHex(hue, 17, 11.4), border: hslToHex(hue, 20, 18.6) }
-      : { bg: hslToHex(hue, 38.5, 97.5), surface: "#ffffff", border: hslToHex(hue, 21, 90.5) };
-  return {
-    "--login-accent-1": v.a1,
-    "--login-accent-2": v.a2,
-    "--login-accent": v.a,
-    "--login-tint": v.tint,
-    "--login-bg": surface.bg,
-    "--login-surface": surface.surface,
-    "--login-border": surface.border,
-  };
-}
-
-// The brand mark's dense dot-cluster pattern, ported verbatim from the
-// design mockup — same circles/opacities, just re-expressed as JSX.
+// Same fixed brand-mark gradient as the sidebar (Sidebar.tsx) — the logo
+// itself stays a constant red/pink regardless of the picked accent, it's
+// only the interactive UI (buttons, background) that follows the picker.
 function BrandMark() {
   return (
     <svg width="130" height="50" viewBox="0 0 130 50" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="login-bg1" x1="0.5" y1="9.087" x2="0.5" y2="-8.246" gradientUnits="objectBoundingBox">
-          <stop offset="0" stopColor="var(--login-accent-1)" />
-          <stop offset="1" stopColor="var(--login-accent-2)" />
+          <stop offset="0" stopColor="#8a1e2f" />
+          <stop offset="1" stopColor="#ed203e" />
         </linearGradient>
       </defs>
       <g fill="url(#login-bg1)">
@@ -201,34 +109,27 @@ function BrandMark() {
   );
 }
 
+// Same faint corner decoration as the board pages (see app/layout.tsx),
+// filled with the shared --accent so it matches whatever's picked there too.
 function DotField({ corner }: { corner: "tr" | "bl" }) {
-  const gradId = `login-dg-${corner}`;
   return (
     <svg className={`login-dotfield ${corner}`} viewBox="0 0 47 47" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <defs>
-        <linearGradient id={gradId} x1="0.5" y1="1" x2="0.5" y2="0" gradientUnits="objectBoundingBox">
-          <stop offset="0" stopColor="var(--login-accent-1)" />
-          <stop offset="1" stopColor="var(--login-accent-2)" />
-        </linearGradient>
-      </defs>
-      <g fill={`url(#${gradId})`}>
-        <circle cx="25" cy="25" r="1.849" />
-        <circle cx="25" cy="17" r="1.849" opacity="0.8" />
-        <circle cx="25" cy="9" r="1.849" opacity="0.6" />
-        <circle cx="33" cy="25" r="1.849" opacity="0.85" />
-        <circle cx="17" cy="25" r="1.849" />
-        <circle cx="9" cy="25" r="1.849" opacity="0.75" />
-        <circle cx="19" cy="19" r="1.849" opacity="0.9" />
-        <circle cx="31" cy="19" r="1.849" opacity="0.85" />
-        <circle cx="31" cy="31" r="1.849" opacity="0.7" />
-        <circle cx="19" cy="31" r="1.849" opacity="0.3" />
-        <circle cx="25" cy="41" r="1.849" opacity="0.5" />
-        <circle cx="41" cy="25" r="1.849" opacity="0.7" />
-        <circle cx="8" cy="8" r="1.849" opacity="0.9" />
-        <circle cx="42" cy="42" r="1.849" opacity="0.5" />
-        <circle cx="42" cy="8" r="1.849" opacity="0.8" />
-        <circle cx="8" cy="42" r="1.849" opacity="0.3" />
-      </g>
+      <circle cx="25" cy="25" r="1.849" fill="var(--accent)" />
+      <circle cx="25" cy="17" r="1.849" fill="var(--accent)" opacity="0.8" />
+      <circle cx="25" cy="9" r="1.849" fill="var(--accent)" opacity="0.6" />
+      <circle cx="33" cy="25" r="1.849" fill="var(--accent)" opacity="0.85" />
+      <circle cx="17" cy="25" r="1.849" fill="var(--accent)" />
+      <circle cx="9" cy="25" r="1.849" fill="var(--accent)" opacity="0.75" />
+      <circle cx="19" cy="19" r="1.849" fill="var(--accent)" opacity="0.9" />
+      <circle cx="31" cy="19" r="1.849" fill="var(--accent)" opacity="0.85" />
+      <circle cx="31" cy="31" r="1.849" fill="var(--accent)" opacity="0.7" />
+      <circle cx="19" cy="31" r="1.849" fill="var(--accent)" opacity="0.3" />
+      <circle cx="25" cy="41" r="1.849" fill="var(--accent)" opacity="0.5" />
+      <circle cx="41" cy="25" r="1.849" fill="var(--accent)" opacity="0.7" />
+      <circle cx="8" cy="8" r="1.849" fill="var(--accent)" opacity="0.9" />
+      <circle cx="42" cy="42" r="1.849" fill="var(--accent)" opacity="0.5" />
+      <circle cx="42" cy="8" r="1.849" fill="var(--accent)" opacity="0.8" />
+      <circle cx="8" cy="42" r="1.849" fill="var(--accent)" opacity="0.3" />
     </svg>
   );
 }
@@ -248,7 +149,6 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [savedEmails, setSavedEmails] = useState<string[]>([]);
 
-  const [accentKey, setAccentKey] = useState(DEFAULT_LOGIN_ACCENT);
   const [accentOpen, setAccentOpen] = useState(false);
   const accentPickerRef = useRef<HTMLDivElement>(null);
 
@@ -261,8 +161,11 @@ function LoginForm() {
   }, []);
 
   useEffect(() => {
+    // Same shared theme as the board pages (lib/theme.ts) — picking a color
+    // here or on the board carries over everywhere, they're one setting.
     const initial = readStoredTheme();
     setTheme(initial);
+    applyTheme(initial);
 
     try {
       const savedLang = localStorage.getItem(LANG_STORAGE_KEY);
@@ -276,34 +179,15 @@ function LoginForm() {
     } catch {
       // ignore malformed/unavailable localStorage
     }
-    try {
-      const savedAccent = localStorage.getItem(LOGIN_ACCENT_KEY);
-      if (savedAccent && LOGIN_ACCENT_PRESETS[savedAccent]) setAccentKey(savedAccent);
-    } catch {
-      // ignore
-    }
   }, []);
 
-  function pickAccent(key: string) {
-    setAccentKey(key);
-    setAccentOpen(false);
-    try {
-      localStorage.setItem(LOGIN_ACCENT_KEY, key);
-    } catch {
-      // ignore
-    }
-  }
-
-  // This page has its own [data-login-theme] token set (see globals.css),
-  // separate from the shared --accent one applyTheme() writes to
-  // document.documentElement — only the light/dark mode carries over here,
-  // not the shade/accent pickers, which don't have a login-page equivalent.
-  function toggleTheme() {
+  function update(patch: Partial<ThemeState>) {
     setTheme((prev) => {
       const base = prev ?? readStoredTheme();
-      const nextState: ThemeState = { ...base, mode: base.mode === "light" ? "dark" : "light" };
-      storeTheme(nextState);
-      return nextState;
+      const next: ThemeState = { ...base, ...patch };
+      applyTheme(next);
+      storeTheme(next);
+      return next;
     });
   }
 
@@ -371,15 +255,20 @@ function LoginForm() {
   }
 
   const themeMode = theme?.mode ?? "light";
-  const accentVars = loginAccentVars(accentKey, themeMode);
+  const accentKey = theme?.accentKey ?? "red";
 
   return (
-    <div className="login-page" data-login-theme={themeMode} style={accentVars as React.CSSProperties}>
+    <div className="login-page">
       <div className="login-top-controls">
         <button className="login-lang-toggle" type="button" onClick={toggleLang}>
           {lang === "zh" ? "EN" : "中文"}
         </button>
-        <button className="login-theme-toggle" type="button" onClick={toggleTheme} aria-label="Toggle theme">
+        <button
+          className="login-theme-toggle"
+          type="button"
+          onClick={() => update({ mode: themeMode === "light" ? "dark" : "light" })}
+          aria-label="Toggle theme"
+        >
           {themeMode === "dark" ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
               <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
@@ -402,16 +291,19 @@ function LoginForm() {
           </button>
           {accentOpen && (
             <div className="login-accent-popover">
-              <div className="login-accent-popover-label">{lang === "zh" ? "主色" : "Accent color"}</div>
+              <div className="login-accent-popover-label">{t(lang, "accentColor")}</div>
               <div className="login-accent-swatch-grid">
-                {LOGIN_ACCENT_ORDER.map((key) => (
+                {ACCENT_FAMILIES.map((a) => (
                   <button
-                    key={key}
+                    key={a.key}
                     type="button"
-                    className={`login-accent-swatch${key === accentKey ? " active" : ""}`}
-                    style={{ background: LOGIN_ACCENT_PRESETS[key].light.a2 }}
-                    onClick={() => pickAccent(key)}
-                    aria-label={key}
+                    className={`login-accent-swatch${a.key === accentKey ? " active" : ""}`}
+                    style={{ background: a[themeMode] }}
+                    onClick={() => {
+                      update({ accentKey: a.key });
+                      setAccentOpen(false);
+                    }}
+                    aria-label={a.key}
                   />
                 ))}
               </div>
