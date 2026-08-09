@@ -13,8 +13,8 @@ import {
 type Lang = "zh" | "en";
 
 const STRINGS: Record<string, Record<Lang, string>> = {
-  title: { zh: "案件追蹤看板", en: "Case Tracking Board" },
-  subtitle: { zh: "登入後才能查看案件", en: "Sign in to view cases" },
+  title: { zh: "BTi CS Handover Board", en: "BTi CS Handover Board" },
+  subtitle: { zh: "客服交接與案件管理平台", en: "CS Handover & Case Tracking Platform" },
   emailLabel: { zh: "信箱", en: "Email" },
   getCode: { zh: "取得驗證碼", en: "Send code" },
   sending: { zh: "傳送中...", en: "Sending..." },
@@ -34,6 +34,110 @@ function t(lang: Lang, key: string): string {
 
 const SAVED_EMAILS_KEY = "t1ho_saved_emails";
 
+// The brand mark's dense dot-cluster pattern, ported verbatim from the
+// design mockup — same circles/opacities, just re-expressed as JSX.
+function BrandMark() {
+  return (
+    <svg width="130" height="50" viewBox="0 0 130 50" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="login-bg1" x1="0.5" y1="9.087" x2="0.5" y2="-8.246" gradientUnits="objectBoundingBox">
+          <stop offset="0" stopColor="var(--login-accent-1)" />
+          <stop offset="1" stopColor="var(--login-accent-2)" />
+        </linearGradient>
+      </defs>
+      <g fill="url(#login-bg1)">
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152 23.006)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152 15.027)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152 30.872)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(31.074 22.949)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(15.229 22.949)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(17.55 17.347)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(28.754 28.551)" opacity="0.75" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(28.754 17.347)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(17.55 28.551)" opacity="0.3" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152 7.513)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152 38.499)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(7.659 23.006)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(38.644 23.006)" opacity="0.75" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(34.106 12.051)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(12.196 33.961)" opacity="0.3" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(12.196 12.051)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(34.106 33.961)" opacity="0.65" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(29.08 8.692)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(17.223 37.319)" opacity="0.35" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(8.838 17.077)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(37.465 28.935)" opacity="0.75" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(17.223 8.692)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(29.08 37.319)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(8.838 28.934)" opacity="0.2" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(37.465 17.077)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(23.152 46.303)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(46.303 23.152)" opacity="0.75" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(0 23.152)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(6.781 6.781)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(39.522 39.522)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(39.522 6.781)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(6.781 39.522)" opacity="0.3" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(3.102 11.576)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(43.201 34.727)" opacity="0.65" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(34.727 3.102)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(11.576 43.201)" opacity="0.35" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(11.576 3.102)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(34.727 43.201)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(43.201 11.576)" opacity="0.85" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(3.102 34.727)" opacity="0.2" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(0.789 17.16)" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(45.514 29.144)" opacity="0.65" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(29.144 0.789)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(17.16 45.514)" opacity="0.5" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(17.16 0.789)" opacity="0.95" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(29.144 45.514)" opacity="0.55" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(45.514 17.16)" opacity="0.75" />
+        <circle cx="1.849" cy="1.849" r="1.849" transform="translate(0.789 29.144)" opacity="0.2" />
+      </g>
+      <g fill="url(#login-bg1)" transform="translate(60.093 9.873)">
+        <rect width="4.237" height="4.233" rx="2.116" transform="translate(65.24 0.003)" />
+        <rect width="4.222" height="21.726" transform="translate(65.255 8.137)" />
+        <path d="M211.926,266.087a6.261,6.261,0,0,0-2.619-1.294v-7.126a6.24,6.24,0,0,0-6.23-6.23H183.319V281.3h24.2a6.017,6.017,0,0,0,3.037-.782,6.369,6.369,0,0,0,1.371-1.046,6,6,0,0,0,1.828-4.4v-4.586a6.005,6.005,0,0,0-1.828-4.4Zm-8.85-10.426a2.022,2.022,0,0,1,2.008,2.008v6.591H187.462l.085-6.591a1.971,1.971,0,0,1,.137-.731,2.118,2.118,0,0,1,1.916-1.277ZM189.6,277.079a2.017,2.017,0,0,1-1.442-.592,1.893,1.893,0,0,1-.618-1.416v-6.533h20.405a2.021,2.021,0,0,1,1.534,1.949v4.582a2.021,2.021,0,0,1-2.008,2.008Z" transform="translate(-183.319 -251.437)" />
+        <path d="M89.117,9.873V14.1h12.924V39.73h4.266V14.1H119.23V9.873Z" transform="translate(-59.093 -9.873)" />
+      </g>
+    </svg>
+  );
+}
+
+function DotField({ corner }: { corner: "tr" | "bl" }) {
+  const gradId = `login-dg-${corner}`;
+  return (
+    <svg className={`login-dotfield ${corner}`} viewBox="0 0 47 47" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id={gradId} x1="0.5" y1="1" x2="0.5" y2="0" gradientUnits="objectBoundingBox">
+          <stop offset="0" stopColor="var(--login-accent-1)" />
+          <stop offset="1" stopColor="var(--login-accent-2)" />
+        </linearGradient>
+      </defs>
+      <g fill={`url(#${gradId})`}>
+        <circle cx="25" cy="25" r="1.849" />
+        <circle cx="25" cy="17" r="1.849" opacity="0.8" />
+        <circle cx="25" cy="9" r="1.849" opacity="0.6" />
+        <circle cx="33" cy="25" r="1.849" opacity="0.85" />
+        <circle cx="17" cy="25" r="1.849" />
+        <circle cx="9" cy="25" r="1.849" opacity="0.75" />
+        <circle cx="19" cy="19" r="1.849" opacity="0.9" />
+        <circle cx="31" cy="19" r="1.849" opacity="0.85" />
+        <circle cx="31" cy="31" r="1.849" opacity="0.7" />
+        <circle cx="19" cy="31" r="1.849" opacity="0.3" />
+        <circle cx="25" cy="41" r="1.849" opacity="0.5" />
+        <circle cx="41" cy="25" r="1.849" opacity="0.7" />
+        <circle cx="8" cy="8" r="1.849" opacity="0.9" />
+        <circle cx="42" cy="42" r="1.849" opacity="0.5" />
+        <circle cx="42" cy="8" r="1.849" opacity="0.8" />
+        <circle cx="8" cy="42" r="1.849" opacity="0.3" />
+      </g>
+    </svg>
+  );
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -52,7 +156,6 @@ function LoginForm() {
   useEffect(() => {
     const initial = readStoredTheme();
     setTheme(initial);
-    applyTheme(initial);
 
     try {
       const savedLang = localStorage.getItem(LANG_STORAGE_KEY);
@@ -68,13 +171,16 @@ function LoginForm() {
     }
   }, []);
 
+  // This page has its own [data-login-theme] token set (see globals.css),
+  // separate from the shared --accent one applyTheme() writes to
+  // document.documentElement — only the light/dark mode carries over here,
+  // not the shade/accent pickers, which don't have a login-page equivalent.
   function toggleTheme() {
     setTheme((prev) => {
       const base = prev ?? readStoredTheme();
-      const next: ThemeState = { ...base, mode: base.mode === "light" ? "dark" : "light" };
-      applyTheme(next);
-      storeTheme(next);
-      return next;
+      const nextState: ThemeState = { ...base, mode: base.mode === "light" ? "dark" : "light" };
+      storeTheme(nextState);
+      return nextState;
     });
   }
 
@@ -141,19 +247,16 @@ function LoginForm() {
     }
   }
 
+  const themeMode = theme?.mode ?? "light";
+
   return (
-    <div className="login-stage">
+    <div className="login-page" data-login-theme={themeMode}>
       <div className="login-top-controls">
         <button className="login-lang-toggle" type="button" onClick={toggleLang}>
           {lang === "zh" ? "EN" : "中文"}
         </button>
-        <button
-          className="login-theme-toggle"
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-        >
-          {theme?.mode === "dark" ? (
+        <button className="login-theme-toggle" type="button" onClick={toggleTheme} aria-label="Toggle theme">
+          {themeMode === "dark" ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
               <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
             </svg>
@@ -166,73 +269,74 @@ function LoginForm() {
         </button>
       </div>
 
-      <div className="login-card">
-        <div className="login-brandmark" aria-hidden="true">
-          <svg width="120" height="46" viewBox="0 0 130 50" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="35" fontSize="30" fontWeight="700" fill="var(--accent)">
-              BTi
-            </text>
-          </svg>
+      <DotField corner="tr" />
+      <DotField corner="bl" />
+
+      <div className="login-stage">
+        <div className="login-card">
+          <div className="login-brandmark" aria-hidden="true">
+            <BrandMark />
+          </div>
+
+          <h1>{t(lang, "title")}</h1>
+          <p className="login-subtitle">{t(lang, "subtitle")}</p>
+
+          {stage === "email" ? (
+            <div>
+              <div className="login-field">
+                <label htmlFor="login-email">{t(lang, "emailLabel")}</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  placeholder="name@btigroup.io"
+                  list="login-saved-emails"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && email && !loading && requestCode()}
+                />
+                <datalist id="login-saved-emails">
+                  {savedEmails.map((e) => (
+                    <option key={e} value={e} />
+                  ))}
+                </datalist>
+              </div>
+              <button className="login-primary-btn" type="button" onClick={requestCode} disabled={loading || !email}>
+                {loading ? t(lang, "sending") : t(lang, "getCode")}
+              </button>
+              <p className="login-hint">{t(lang, "emailHint")}</p>
+            </div>
+          ) : (
+            <div>
+              <div className="login-field">
+                <label htmlFor="login-code">{t(lang, "codeLabel")}</label>
+                <input
+                  id="login-code"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder={t(lang, "codePlaceholder")}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && code && !loading && verifyCode()}
+                />
+              </div>
+              <button className="login-primary-btn" type="button" onClick={verifyCode} disabled={loading || !code}>
+                {loading ? t(lang, "verifying") : t(lang, "verify")}
+              </button>
+              <button
+                className="login-back-link"
+                type="button"
+                onClick={() => {
+                  setStage("email");
+                  setError(null);
+                }}
+              >
+                {t(lang, "back")}
+              </button>
+            </div>
+          )}
+
+          {error && <p className="login-error">{error}</p>}
         </div>
-
-        <h1>{t(lang, "title")}</h1>
-        <p className="login-subtitle">{t(lang, "subtitle")}</p>
-
-        {stage === "email" ? (
-          <div>
-            <div className="login-field">
-              <label htmlFor="login-email">{t(lang, "emailLabel")}</label>
-              <input
-                id="login-email"
-                type="email"
-                placeholder="name@btigroup.io"
-                list="login-saved-emails"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && email && !loading && requestCode()}
-              />
-              <datalist id="login-saved-emails">
-                {savedEmails.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
-            </div>
-            <button className="login-primary-btn" type="button" onClick={requestCode} disabled={loading || !email}>
-              {loading ? t(lang, "sending") : t(lang, "getCode")}
-            </button>
-            <p className="login-hint">{t(lang, "emailHint")}</p>
-          </div>
-        ) : (
-          <div>
-            <div className="login-field">
-              <label htmlFor="login-code">{t(lang, "codeLabel")}</label>
-              <input
-                id="login-code"
-                type="text"
-                inputMode="numeric"
-                placeholder={t(lang, "codePlaceholder")}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && code && !loading && verifyCode()}
-              />
-            </div>
-            <button className="login-primary-btn" type="button" onClick={verifyCode} disabled={loading || !code}>
-              {loading ? t(lang, "verifying") : t(lang, "verify")}
-            </button>
-            <button
-              className="login-back-link"
-              type="button"
-              onClick={() => {
-                setStage("email");
-                setError(null);
-              }}
-            >
-              {t(lang, "back")}
-            </button>
-          </div>
-        )}
-
-        {error && <p className="login-error">{error}</p>}
       </div>
     </div>
   );

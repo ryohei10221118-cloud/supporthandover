@@ -776,14 +776,66 @@ tr.overdue td {
   flex-wrap: wrap;
 }
 
-/* --- Login page --- */
+/* --- Login page ---
+   Deliberately its own branded look (warm red/pink, from the design mockup)
+   rather than the rest of the app's blue tool palette — this is the front
+   door, styled separately, with its own token set so it doesn't fight with
+   --accent/--bg/--surface used everywhere else. */
+.login-page {
+  --login-bg: #fbf6f6;
+  --login-surface: #ffffff;
+  --login-border: #ece2e2;
+  --login-text: #211417;
+  --login-text-muted: #7a6b6d;
+  --login-accent-1: #8a1e2f;
+  --login-accent-2: #ed203e;
+  --login-accent: #ed203e;
+  --login-tint: #fdecee;
+  --login-danger: #c81e3a;
+  --login-shadow: 0 20px 50px -20px rgba(138, 30, 47, 0.25), 0 2px 8px rgba(33, 20, 23, 0.04);
+  --login-dot-opacity: 0.07;
+
+  background: var(--login-bg);
+  color: var(--login-text);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.login-page[data-login-theme="dark"] {
+  --login-bg: #171112;
+  --login-surface: #221819;
+  --login-border: #392627;
+  --login-text: #f3e9ea;
+  --login-text-muted: #b09a9c;
+  --login-accent-1: #ff5f74;
+  --login-accent-2: #ff2f4d;
+  --login-accent: #ff3b57;
+  --login-tint: #38191d;
+  --login-danger: #ff6b7f;
+  --login-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --login-dot-opacity: 0.28;
+}
+
+.login-dotfield {
+  position: fixed;
+  width: 640px;
+  height: 640px;
+  pointer-events: none;
+  opacity: var(--login-dot-opacity);
+  z-index: 0;
+}
+.login-dotfield.tr { top: -220px; right: -220px; }
+.login-dotfield.bl { bottom: -220px; left: -220px; }
+
 .login-stage {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  position: relative;
 }
 
 .login-top-controls {
@@ -799,9 +851,9 @@ tr.overdue td {
 .login-theme-toggle {
   height: 34px;
   border-radius: 17px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-muted);
+  border: 1px solid var(--login-border);
+  background: var(--login-surface);
+  color: var(--login-text-muted);
   cursor: pointer;
   font-family: inherit;
 }
@@ -824,24 +876,24 @@ tr.overdue td {
 
 .login-lang-toggle:hover,
 .login-theme-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--login-accent);
+  color: var(--login-accent);
 }
 
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--login-surface);
+  border: 1px solid var(--login-border);
   border-radius: 18px;
-  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--login-shadow);
   padding: 40px 36px 32px;
 }
 
 .login-brandmark {
   display: flex;
   justify-content: center;
-  margin-bottom: 18px;
+  margin-bottom: 22px;
 }
 
 .login-card h1 {
@@ -849,13 +901,14 @@ tr.overdue td {
   font-weight: 700;
   text-align: center;
   margin: 0 0 6px;
+  color: var(--login-text);
 }
 
 .login-subtitle {
   text-align: center;
-  color: var(--text-muted);
+  color: var(--login-text-muted);
   font-size: 0.85rem;
-  margin: 0 0 28px;
+  margin: 0 0 30px;
 }
 
 .login-field {
@@ -866,25 +919,26 @@ tr.overdue td {
   display: block;
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--login-text-muted);
   margin-bottom: 6px;
 }
 
 .login-field input {
   width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: var(--login-bg);
+  border: 1px solid var(--login-border);
+  color: var(--login-text);
   border-radius: 10px;
   padding: 11px 13px;
   font-size: 0.92rem;
   font-family: inherit;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .login-field input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--login-accent);
+  box-shadow: 0 0 0 3px var(--login-tint);
 }
 
 .login-primary-btn {
@@ -896,17 +950,25 @@ tr.overdue td {
   font-weight: 650;
   font-family: inherit;
   color: #fff;
-  background: var(--accent);
+  background: linear-gradient(180deg, var(--login-accent-2), var(--login-accent-1));
   cursor: pointer;
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--login-accent) 55%, transparent);
+  transition: filter 0.15s ease, transform 0.1s ease;
 }
 
 .login-primary-btn:hover {
   filter: brightness(1.06);
 }
 
+.login-primary-btn:active {
+  transform: translateY(1px);
+}
+
 .login-primary-btn:disabled {
   opacity: 0.55;
   cursor: default;
+  box-shadow: none;
+  filter: none;
 }
 
 .login-back-link {
@@ -914,7 +976,7 @@ tr.overdue td {
   margin: 14px auto 0;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--login-text-muted);
   font-size: 0.8rem;
   font-family: inherit;
   cursor: pointer;
@@ -923,14 +985,14 @@ tr.overdue td {
 }
 
 .login-back-link:hover {
-  color: var(--accent);
+  color: var(--login-accent);
   text-decoration: underline;
 }
 
 .login-hint {
   margin-top: 16px;
   font-size: 0.76rem;
-  color: var(--text-muted);
+  color: var(--login-text-muted);
   text-align: center;
   line-height: 1.6;
 }
@@ -938,7 +1000,7 @@ tr.overdue td {
 .login-error {
   margin-top: 14px;
   font-size: 0.8rem;
-  color: var(--overdue);
+  color: var(--login-danger);
   text-align: center;
 }
 
