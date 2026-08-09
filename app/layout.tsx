@@ -7,43 +7,27 @@ export const metadata: Metadata = {
   description: "跨team案件追蹤狀態看板",
 };
 
-// Applies the saved theme (light/dark + shade + accent) before React
-// hydrates, so a returning dark-mode user doesn't see a flash of the light
-// default while the page loads. Keep this in sync by hand with
-// LIGHT_SHADES / DARK_SHADES / ACCENT_FAMILIES / applyTheme() in
-// CaseBoard.tsx — it can't import that logic since it has to run as a
-// plain, blocking script ahead of the rest of the JS bundle.
+// Applies the saved theme (light/dark + accent) before React hydrates, so a
+// returning dark-mode user doesn't see a flash of the light default while
+// the page loads. Keep this in sync by hand with ACCENT_FAMILIES /
+// applyTheme() in lib/theme.ts — it can't import that logic since it has to
+// run as a plain, blocking script ahead of the rest of the JS bundle.
 const THEME_INIT_SCRIPT = `(function () {
   try {
     var raw = localStorage.getItem("t1ho_theme");
     var parsed = raw ? JSON.parse(raw) : null;
     var mode = "light";
-    var shadeIndex = 3;
     var accentKey = "blue";
     if (
       parsed &&
       (parsed.mode === "light" || parsed.mode === "dark") &&
-      typeof parsed.shadeIndex === "number" &&
       typeof parsed.accentKey === "string"
     ) {
       mode = parsed.mode;
-      shadeIndex = parsed.shadeIndex;
       accentKey = parsed.accentKey;
     } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
       mode = "dark";
     }
-    var lightShades = [
-      { bg: "#ffffff", surface: "#ffffff" },
-      { bg: "#f6f7f8", surface: "#fbfbfc" },
-      { bg: "#e9ebef", surface: "#f4f5f7" },
-      { bg: "#f7f8fa", surface: "#ffffff" }
-    ];
-    var darkShades = [
-      { bg: "#000000", surface: "#141414" },
-      { bg: "#1b1c20", surface: "#242529" },
-      { bg: "#22252b", surface: "#2c2f36" },
-      { bg: "#14161a", surface: "#1d2026" }
-    ];
     var accents = {
       red: { light: "#dc2626", dark: "#f87171" },
       orange: { light: "#ea580c", dark: "#fb923c" },
@@ -56,16 +40,43 @@ const THEME_INIT_SCRIPT = `(function () {
       purple: { light: "#9333ea", dark: "#c084fc" },
       pink: { light: "#db2777", dark: "#f472b6" }
     };
-    var shades = mode === "light" ? lightShades : darkShades;
-    var shade = shades[shadeIndex] || shades[3];
     var accent = accents[accentKey] || accents.blue;
+    var accentHex = accent[mode];
+    function hexToHue(hex) {
+      var r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+      var max = Math.max(r, g, b), min = Math.min(r, g, b), h = 0;
+      if (max !== min) {
+        var d = max - min;
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h *= 60;
+      }
+      return h;
+    }
+    function hslToHex(h, s, l) {
+      s /= 100; l /= 100;
+      var c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2, r, g, b;
+      if (h < 60) { r = c; g = x; b = 0; } else if (h < 120) { r = x; g = c; b = 0; }
+      else if (h < 180) { r = 0; g = c; b = x; } else if (h < 240) { r = 0; g = x; b = c; }
+      else if (h < 300) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
+      function toHex(v) { return Math.round((v + m) * 255).toString(16).padStart(2, "0"); }
+      return "#" + toHex(r) + toHex(g) + toHex(b);
+    }
+    var hue = hexToHue(accentHex);
     var root = document.documentElement;
-    root.style.setProperty("--bg", shade.bg);
-    root.style.setProperty("--surface", shade.surface);
-    root.style.setProperty("--accent", accent[mode]);
+    if (mode === "light") {
+      root.style.setProperty("--bg", hslToHex(hue, 38.5, 97.5));
+      root.style.setProperty("--surface", "#ffffff");
+      root.style.setProperty("--border", hslToHex(hue, 21, 90.5));
+    } else {
+      root.style.setProperty("--bg", hslToHex(hue, 15, 7.8));
+      root.style.setProperty("--surface", hslToHex(hue, 17, 11.4));
+      root.style.setProperty("--border", hslToHex(hue, 20, 18.6));
+    }
+    root.style.setProperty("--accent", accentHex);
     root.style.setProperty("--text", mode === "light" ? "#1a1d23" : "#e8eaed");
     root.style.setProperty("--text-muted", mode === "light" ? "#6b7280" : "#9aa0a8");
-    root.style.setProperty("--border", mode === "light" ? "#e2e5ea" : "#2c303a");
     root.style.setProperty("--overdue", mode === "light" ? "#dc2626" : "#f87171");
     root.style.setProperty("--overdue-bg", mode === "light" ? "#fef2f2" : "#3a1d1d");
     root.style.setProperty("--sidebar", mode === "light" ? "#211417" : "#0f0b0c");

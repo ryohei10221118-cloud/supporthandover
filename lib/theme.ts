@@ -1,35 +1,9 @@
-// Shared light/dark mode + accent color system. Used by CaseBoard.tsx (the
-// interactive picker), the blocking pre-hydration script in app/layout.tsx
-// (kept in sync by hand there, since it can't import this module — see the
-// comment on THEME_INIT_SCRIPT), and the login page.
+// Shared light/dark mode + accent color system. Used by ThemePicker.tsx (the
+// interactive picker in the sidebar), the blocking pre-hydration script in
+// app/layout.tsx (kept in sync by hand there, since it can't import this
+// module — see the comment on THEME_INIT_SCRIPT), and the login page (which
+// has its own separate accent palette/picker, but shares the mode toggle).
 export type ThemeMode = "light" | "dark";
-
-export interface ShadeOption {
-  key: string;
-  label: Record<"zh" | "en", string>;
-  bg: string;
-  surface: string;
-}
-
-// "gray"/"iron" (index 3 in each list) are this app's original --bg/--surface
-// values, kept byte-for-byte so a first-time visitor sees no change. The
-// other three intentionally tint --surface too (not just --bg) so picking
-// them has a visible effect on the cards/table, not just the page margins.
-export const LIGHT_SHADES: ShadeOption[] = [
-  { key: "pure", label: { zh: "純白", en: "Pure white" }, bg: "#ffffff", surface: "#ffffff" },
-  { key: "faint", label: { zh: "淡灰", en: "Faint gray" }, bg: "#f6f7f8", surface: "#fbfbfc" },
-  { key: "pale", label: { zh: "淺灰", en: "Pale gray" }, bg: "#e9ebef", surface: "#f4f5f7" },
-  { key: "gray", label: { zh: "灰階", en: "Gray" }, bg: "#f7f8fa", surface: "#ffffff" },
-];
-
-export const DARK_SHADES: ShadeOption[] = [
-  { key: "black", label: { zh: "純黑", en: "Pure black" }, bg: "#000000", surface: "#141414" },
-  { key: "graphite", label: { zh: "石墨", en: "Graphite" }, bg: "#1b1c20", surface: "#242529" },
-  { key: "charcoal", label: { zh: "深灰", en: "Charcoal" }, bg: "#22252b", surface: "#2c2f36" },
-  { key: "iron", label: { zh: "鐵灰", en: "Iron" }, bg: "#14161a", surface: "#1d2026" },
-];
-
-export const DEFAULT_SHADE_INDEX = 3;
 
 export interface AccentFamily {
   key: string;
@@ -37,8 +11,8 @@ export interface AccentFamily {
   dark: string;
 }
 
-// "blue" matches this app's original --accent values exactly for both
-// modes, so it stays the default until someone explicitly picks another.
+// "blue" matches this app's original --accent value exactly for both modes,
+// so it stays the default until someone explicitly picks another.
 export const ACCENT_FAMILIES: AccentFamily[] = [
   { key: "red", light: "#dc2626", dark: "#f87171" },
   { key: "orange", light: "#ea580c", dark: "#fb923c" },
@@ -58,18 +32,13 @@ export const LANG_STORAGE_KEY = "t1ho_lang";
 
 export interface ThemeState {
   mode: ThemeMode;
-  shadeIndex: number;
   accentKey: string;
 }
 
 export function isThemeState(value: unknown): value is ThemeState {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return (
-    (v.mode === "light" || v.mode === "dark") &&
-    typeof v.shadeIndex === "number" &&
-    typeof v.accentKey === "string"
-  );
+  return (v.mode === "light" || v.mode === "dark") && typeof v.accentKey === "string";
 }
 
 export function readStoredTheme(): ThemeState {
@@ -82,25 +51,72 @@ export function readStoredTheme(): ThemeState {
   }
   return {
     mode: typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-    shadeIndex: DEFAULT_SHADE_INDEX,
     accentKey: DEFAULT_ACCENT_KEY,
   };
 }
 
+function hexToHsl(hex: string): [number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return [h, s * 100, l * 100];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
 export function applyTheme(state: ThemeState) {
-  const shades = state.mode === "light" ? LIGHT_SHADES : DARK_SHADES;
-  const shade = shades[state.shadeIndex] ?? shades[DEFAULT_SHADE_INDEX];
   const accent = ACCENT_FAMILIES.find((a) => a.key === state.accentKey) ?? ACCENT_FAMILIES[6];
+  const accentHex = accent[state.mode];
+  // --bg/--surface/--border are derived from the picked accent's hue (not a
+  // separate grayscale picker) — same approach as the login page, so the
+  // whole app leans into the chosen color instead of just the accent bits.
+  const [hue] = hexToHsl(accentHex);
   const root = document.documentElement;
-  root.style.setProperty("--bg", shade.bg);
-  root.style.setProperty("--surface", shade.surface);
-  root.style.setProperty("--accent", accent[state.mode]);
+  if (state.mode === "light") {
+    root.style.setProperty("--bg", hslToHex(hue, 38.5, 97.5));
+    root.style.setProperty("--surface", "#ffffff");
+    root.style.setProperty("--border", hslToHex(hue, 21, 90.5));
+  } else {
+    root.style.setProperty("--bg", hslToHex(hue, 15, 7.8));
+    root.style.setProperty("--surface", hslToHex(hue, 17, 11.4));
+    root.style.setProperty("--border", hslToHex(hue, 20, 18.6));
+  }
+  root.style.setProperty("--accent", accentHex);
   root.style.setProperty("--text", state.mode === "light" ? "#1a1d23" : "#e8eaed");
   root.style.setProperty("--text-muted", state.mode === "light" ? "#6b7280" : "#9aa0a8");
-  root.style.setProperty("--border", state.mode === "light" ? "#e2e5ea" : "#2c303a");
   root.style.setProperty("--overdue", state.mode === "light" ? "#dc2626" : "#f87171");
   root.style.setProperty("--overdue-bg", state.mode === "light" ? "#fef2f2" : "#3a1d1d");
-  // The sidebar is always a dark chrome, independent of the picked shade —
+  // The sidebar is always a dark chrome, independent of the picked accent —
   // just a slightly darker variant in dark mode, matching the design mockup.
   root.style.setProperty("--sidebar", state.mode === "light" ? "#211417" : "#0f0b0c");
   root.style.setProperty("--sidebar-text", "#ece1e2");

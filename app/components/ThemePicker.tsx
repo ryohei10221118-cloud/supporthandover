@@ -2,9 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  LIGHT_SHADES,
-  DARK_SHADES,
-  DEFAULT_SHADE_INDEX,
   ACCENT_FAMILIES,
   DEFAULT_ACCENT_KEY,
   THEME_STORAGE_KEY,
@@ -16,7 +13,6 @@ import {
 const LABELS = {
   toggleTheme: { zh: "切換亮/暗模式", en: "Toggle light/dark" },
   adjustColor: { zh: "調整顏色", en: "Adjust color" },
-  grayscale: { zh: "灰階", en: "Grayscale" },
   accentColor: { zh: "主色", en: "Accent color" },
 };
 
@@ -55,11 +51,10 @@ export default function ThemePicker({ lang }: { lang: "zh" | "en" }) {
         ? parsed
         : {
             mode: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-            shadeIndex: DEFAULT_SHADE_INDEX,
             accentKey: DEFAULT_ACCENT_KEY,
           };
     } catch {
-      initial = { mode: "light", shadeIndex: DEFAULT_SHADE_INDEX, accentKey: DEFAULT_ACCENT_KEY };
+      initial = { mode: "light", accentKey: DEFAULT_ACCENT_KEY };
     }
     setState(initial);
     applyTheme(initial);
@@ -89,7 +84,6 @@ export default function ThemePicker({ lang }: { lang: "zh" | "en" }) {
 
   if (!state) return null;
 
-  const shades = state.mode === "light" ? LIGHT_SHADES : DARK_SHADES;
   const currentAccent = ACCENT_FAMILIES.find((a) => a.key === state.accentKey) ?? ACCENT_FAMILIES[6];
 
   return (
@@ -113,20 +107,6 @@ export default function ThemePicker({ lang }: { lang: "zh" | "en" }) {
       />
       {open && (
         <div className="theme-menu">
-          <div className="theme-menu-label">{label(lang, "grayscale")}</div>
-          <div className="theme-shade-row">
-            {shades.map((shade, i) => (
-              <button
-                key={shade.key}
-                type="button"
-                className={`theme-shade-chip${state.shadeIndex === i ? " selected" : ""}`}
-                onClick={() => update({ shadeIndex: i })}
-              >
-                <span className="theme-shade-swatch" style={{ background: shade.bg }} />
-                {shade.label[lang]}
-              </button>
-            ))}
-          </div>
           <div className="theme-menu-label">{label(lang, "accentColor")}</div>
           <div className="theme-accent-row">
             {ACCENT_FAMILIES.map((a) => (
