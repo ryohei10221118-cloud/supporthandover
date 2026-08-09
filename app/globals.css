@@ -727,6 +727,28 @@ tr.overdue td {
   color: white;
 }
 
+.priority-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.priority-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.priority-p1 .priority-dot { background: #dc2626; }
+.priority-p2 .priority-dot { background: #ea580c; }
+.priority-p3 .priority-dot { background: #ca8a04; }
+.priority-p4 .priority-dot { background: #9ca3af; }
+.priority-other .priority-dot { background: #9ca3af; }
+
 .note-cell {
   max-width: 320px;
   white-space: pre-wrap;

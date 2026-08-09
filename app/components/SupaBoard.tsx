@@ -34,12 +34,50 @@ function seqNumber(seq: string): number {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+function priorityClass(priority: string): string {
+  const key = priority.trim().toUpperCase();
+  if (key === "P1") return "priority-p1";
+  if (key === "P2") return "priority-p2";
+  if (key === "P3") return "priority-p3";
+  if (key === "P4") return "priority-p4";
+  return "priority-other";
+}
+
 // --- Draggable/resizable columns (same behavior as CaseBoard.tsx's T1 HO
 // table, just with a column set that varies by board) ---
-type ColumnKey = "seq" | "date" | "group" | "classification" | "cs" | "op" | "note" | "reply" | "relatedTicket" | "status";
+type ColumnKey =
+  | "seq"
+  | "date"
+  | "group"
+  | "classification"
+  | "cs"
+  | "op"
+  | "note"
+  | "reply"
+  | "relatedTicket"
+  | "updateDate"
+  | "noteLabel"
+  | "status"
+  | "priority"
+  | "issueTag";
 
 const T1HO_COLUMNS: ColumnKey[] = ["seq", "date", "group", "cs", "op", "note", "reply", "status"];
-const HO_COLUMNS: ColumnKey[] = ["seq", "date", "group", "classification", "cs", "op", "note", "reply", "relatedTicket", "status"];
+const HO_COLUMNS: ColumnKey[] = [
+  "seq",
+  "date",
+  "group",
+  "classification",
+  "op",
+  "note",
+  "reply",
+  "relatedTicket",
+  "cs",
+  "updateDate",
+  "noteLabel",
+  "status",
+  "priority",
+  "issueTag",
+];
 
 const COLUMN_LABELS: Record<ColumnKey, { t1ho: string; ho: string }> = {
   seq: { t1ho: "序列", ho: "ID" },
@@ -51,7 +89,11 @@ const COLUMN_LABELS: Record<ColumnKey, { t1ho: string; ho: string }> = {
   note: { t1ho: "內容", ho: "內容" },
   reply: { t1ho: "追蹤狀況/更新備註", ho: "追蹤狀況/更新備註" },
   relatedTicket: { t1ho: "", ho: "Related ticket" },
+  updateDate: { t1ho: "", ho: "更新日期" },
+  noteLabel: { t1ho: "", ho: "Note" },
   status: { t1ho: "狀態", ho: "狀態" },
+  priority: { t1ho: "", ho: "Priority" },
+  issueTag: { t1ho: "", ho: "Issue Tag" },
 };
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
@@ -64,7 +106,11 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   note: 260,
   reply: 260,
   relatedTicket: 130,
+  updateDate: 110,
+  noteLabel: 140,
   status: 140,
+  priority: 90,
+  issueTag: 120,
 };
 const MIN_COLUMN_WIDTH = 60;
 
@@ -150,7 +196,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
   const [groupFilter, setGroupFilter] = useState("all"); // 部門 (t1ho) / Type (ho)
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
-  const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("none");
+  const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
   function toggleNote(key: string) {
@@ -339,6 +385,10 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
         return <ClampedCell key={colKey} text={c.latestNote} cellKey={`${rowKey}-reply`} expanded={expandedNotes} onToggle={toggleNote} />;
       case "relatedTicket":
         return <td key={colKey}>{c.relatedTicketLabel}</td>;
+      case "updateDate":
+        return <td key={colKey}>{c.updateDate}</td>;
+      case "noteLabel":
+        return <td key={colKey}>{c.noteLabel}</td>;
       case "status":
         return (
           <td key={colKey}>
@@ -346,6 +396,19 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
             {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
           </td>
         );
+      case "priority":
+        return (
+          <td key={colKey}>
+            {c.priority ? (
+              <span className={`priority-tag ${priorityClass(c.priority)}`}>
+                <span className="priority-dot" />
+                {c.priority}
+              </span>
+            ) : null}
+          </td>
+        );
+      case "issueTag":
+        return <td key={colKey}>{c.issueTag ? <span className="badge status-other">{c.issueTag}</span> : null}</td>;
     }
   }
 
