@@ -3,7 +3,9 @@ import { fetchOptionLists, fetchOptionUsage } from "@/lib/optionListsServer";
 import OptionListsPanel from "../components/OptionListsPanel";
 import Topbar from "../components/Topbar";
 
-export const revalidate = 30;
+// No caching here: this is an editing surface, and a stale copy makes it
+// look like a delete didn't take (especially after cleaning up in SQL).
+export const dynamic = "force-dynamic";
 
 export default async function ListsPage() {
   let lists = emptyOptionLists();
