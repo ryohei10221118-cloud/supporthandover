@@ -86,20 +86,43 @@ export async function getSessionRole(): Promise<SessionRole | null> {
 
   try {
     const supabase = getSupabaseClient();
-    const { data: user, error } = await supabase
+    const { data: existing, error } = await supabase
       .from("users")
       .select("role_key")
       .eq("email", session.email)
       .maybeSingle<{ role_key: string }>();
     if (error) throw new Error(error.message);
-    if (!user) return fallbackRole(session.email);
+
+    // Anyone who signs in gets a row, so an admin can see and promote them
+    // without waiting for them to comment on something first. New rows
+    // start at viewer — read and comment, nothing else.
+    let roleKey = existing?.role_key;
+    if (!roleKey) {
+      const { data: created, error: insertError } = await supabase
+        .from("users")
+        .insert({ email: session.email, role_key: "viewer" })
+        .select("role_key")
+        .maybeSingle<{ role_key: string }>();
+      // A concurrent request may have inserted first; either way we end up
+      // with a row, so fall back to re-reading rather than failing.
+      if (insertError || !created) {
+        const { data: reread } = await supabase
+          .from("users")
+          .select("role_key")
+          .eq("email", session.email)
+          .maybeSingle<{ role_key: string }>();
+        roleKey = reread?.role_key ?? "viewer";
+      } else {
+        roleKey = created.role_key;
+      }
+    }
 
     const [permissions, roles] = await Promise.all([
-      fetchPermissionsFor(user.role_key),
+      fetchPermissionsFor(roleKey),
       fetchRoles().catch(() => [] as RoleRow[]),
     ]);
-    const label = roles.find((r) => r.roleKey === user.role_key)?.label ?? user.role_key;
-    return { email: session.email, roleKey: user.role_key, label, permissions };
+    const label = roles.find((r) => r.roleKey === roleKey)?.label ?? roleKey;
+    return { email: session.email, roleKey, label, permissions };
   } catch {
     // A permissions lookup failure must not hand out more access than the
     // user would otherwise have.
