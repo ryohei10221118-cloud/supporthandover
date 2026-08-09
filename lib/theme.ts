@@ -38,6 +38,11 @@ export const LANG_STORAGE_KEY = "t1ho_lang";
 // mount (i.e. after navigating to another page).
 export const LANG_CHANGE_EVENT = "t1ho_lang_change";
 
+// The "+ 新增案件" button lives in the topbar (it belongs to the page chrome)
+// but the modal belongs to the board, which owns the option lists and the
+// refresh. The button announces the click and the board opens the modal.
+export const NEW_CASE_EVENT = "t1ho_new_case";
+
 export interface ThemeState {
   mode: ThemeMode;
   accentKey: string;

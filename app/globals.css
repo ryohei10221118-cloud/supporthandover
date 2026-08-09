@@ -685,6 +685,106 @@ button.primary:disabled {
   cursor: default;
 }
 
+.readonly-field {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* ---------- screenshot dropzone (new case) ---------- */
+.dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 16px 14px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.dropzone svg {
+  display: block;
+  margin: 0 auto 6px;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible,
+.dropzone.drag {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  outline: none;
+}
+
+.attach-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.attach-thumb {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.attach-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attach-thumb .remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  border: none;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.attach-oversize {
+  flex-basis: 100%;
+  font-size: 0.76rem;
+  background: var(--overdue-bg);
+  color: var(--overdue);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.attach-oversize input {
+  width: 100%;
+  margin-top: 6px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
 /* ---------- related ticket / note link cells ---------- */
 .ext-link {
   color: var(--accent);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, NEW_CASE_EVENT } from "@/lib/theme";
 
 type Lang = "zh" | "en";
 
@@ -59,6 +59,9 @@ export default function Topbar({
   }, []);
 
   const meta = PAGE_META[page];
+  // 選項管理 has nothing to create, so it gets no button — same rule as the
+  // mockup's updateNewCaseVisibility.
+  const showNewCase = page !== "lists";
 
   return (
     <div className="topbar">
@@ -68,19 +71,20 @@ export default function Topbar({
           <p>{meta.desc[lang]}</p>
         </div>
       </div>
-      {action}
+      {action ??
+        (showNewCase && (
+          <button
+            type="button"
+            className="primary"
+            onClick={() => window.dispatchEvent(new CustomEvent(NEW_CASE_EVENT))}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>{NEW_CASE_LABEL[lang]}</span>
+          </button>
+        ))}
     </div>
-  );
-}
-
-export function NewCaseButton({ onClick, lang = "zh" }: { onClick: () => void; lang?: Lang }) {
-  return (
-    <button type="button" className="primary" onClick={onClick}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-      <span>{NEW_CASE_LABEL[lang]}</span>
-    </button>
   );
 }

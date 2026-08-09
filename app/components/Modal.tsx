@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Shared modal shell. Closes on an outside (overlay) click and on Escape —
  * every popup in this app behaves that way, so nothing that uses this shell
  * has to reimplement it.
+ *
+ * Rendered through a portal onto <body>: the page content sits in a
+ * `z-index: 1` stacking context, so an overlay left in place would be
+ * painted underneath the sidebar no matter how high its own z-index went.
  */
 export default function Modal({
   title,
@@ -18,7 +23,10 @@ export default function Modal({
   children: ReactNode;
   actions: ReactNode;
 }) {
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
@@ -26,7 +34,9 @@ export default function Modal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="modal-overlay"
       role="presentation"
@@ -41,6 +51,7 @@ export default function Modal({
         {children}
         <div className="modal-actions">{actions}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
-import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, NEW_CASE_EVENT } from "@/lib/theme";
+import NewCaseModal from "./NewCaseModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
 import OptionBadge, { type BadgeOption } from "./OptionBadge";
 import { FIELD_LIST_KEY, type OptionLists } from "@/lib/optionLists";
@@ -562,6 +563,22 @@ export default function SupaBoard({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openCommentKey]);
+
+  // --- New case modal (the topbar button announces the click) ---
+  const [newCaseOpen, setNewCaseOpen] = useState(false);
+  const [me, setMe] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setMe(d.name ?? ""))
+      .catch(() => {});
+    function handleNewCase() {
+      setNewCaseOpen(true);
+    }
+    window.addEventListener(NEW_CASE_EVENT, handleNewCase);
+    return () => window.removeEventListener(NEW_CASE_EVENT, handleNewCase);
+  }, []);
 
   // --- Categorical cells (click-to-change option badges) ---
   const [fieldSaving, setFieldSaving] = useState<string | null>(null);
@@ -1243,6 +1260,20 @@ export default function SupaBoard({
           </button>
         </div>
       </div>
+
+      {newCaseOpen && (
+        <NewCaseModal
+          board={board}
+          lang={lang}
+          optionLists={optionLists}
+          currentUser={me}
+          onClose={() => setNewCaseOpen(false)}
+          onCreated={async () => {
+            setNewCaseOpen(false);
+            await refresh();
+          }}
+        />
+      )}
 
       {linkTarget && (
         <LinkEditModal
