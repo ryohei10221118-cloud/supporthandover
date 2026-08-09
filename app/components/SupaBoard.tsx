@@ -229,25 +229,105 @@ function linkify(text: string, keyPrefix: string): ReactNode[] {
   return nodes;
 }
 
+// A text cell that clamps long content behind a show-more toggle and, per
+// the mockup, turns into an inline textarea when clicked. Enter saves,
+// Shift+Enter adds a newline, Escape cancels, and clicking away saves —
+// same keys as the comment forms.
 function ClampedCell({
   text,
   cellKey,
   expanded,
   onToggle,
   lang,
+  onSave,
+  saving = false,
 }: {
   text: string;
   cellKey: string;
   expanded: Set<string>;
   onToggle: (key: string) => void;
   lang: Lang;
+  onSave?: (next: string) => void;
+  saving?: boolean;
 }) {
-  if (!text) return <td className="note-cell" />;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+
+  function finish(save: boolean) {
+    if (!editing) return;
+    setEditing(false);
+    const next = draft.trim();
+    if (save && onSave && next !== text.trim()) onSave(next);
+  }
+
+  if (editing) {
+    return (
+      <td className="note-cell">
+        <textarea
+          className="inline-edit-ta"
+          autoFocus
+          value={draft}
+          disabled={saving}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => finish(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              finish(true);
+            } else if (e.key === "Escape") {
+              setDraft(text);
+              setEditing(false);
+            }
+          }}
+        />
+        <div className="inline-edit-btns">
+          {/* mousedown+preventDefault keeps focus on the textarea so these
+              clicks don't fire blur (and its auto-save) first */}
+          <button
+            type="button"
+            className="iec-save"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => finish(true)}
+          >
+            {t(lang, "save")}
+          </button>
+          <button
+            type="button"
+            className="iec-cancel"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setDraft(text);
+              setEditing(false);
+            }}
+          >
+            {t(lang, "cancel")}
+          </button>
+        </div>
+      </td>
+    );
+  }
+
   const isLong = isVisuallyLong(text);
   const isExpanded = expanded.has(cellKey);
+  const canEdit = !!onSave;
+
   return (
-    <td className="note-cell">
-      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
+    <td
+      className={`note-cell${canEdit ? " editable-cell" : ""}`}
+      onClick={(e) => {
+        if (!canEdit) return;
+        // The show-more toggle is inside this cell; clicking it shouldn't
+        // also drop the cell into edit mode.
+        if ((e.target as HTMLElement).closest(".note-toggle")) return;
+        setDraft(text);
+        setEditing(true);
+      }}
+    >
+      {text ? (
+        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
+      ) : (
+        canEdit && <span className="cell-placeholder">—</span>
+      )}
       {isLong && (
         <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
@@ -604,18 +684,18 @@ export default function SupaBoard({
         setFieldError(data.error || t(lang, "saveFailed"));
         return;
       }
-      const patch: Partial<SupaCaseRow> =
-        field === "dept"
-          ? { dept: value }
-          : field === "type"
-            ? { hoType: value }
-            : field === "class"
-              ? { hoClass: value }
-              : field === "issueTag"
-                ? { issueTag: value }
-                : field === "priority"
-                  ? { priority: value }
-                  : { status: value };
+      const PATCH_KEY: Record<string, keyof SupaCaseRow> = {
+        dept: "dept",
+        type: "hoType",
+        class: "hoClass",
+        issueTag: "issueTag",
+        priority: "priority",
+        status: "status",
+        op: "op",
+        cs: "cs",
+        content: "content",
+      };
+      const patch = { [PATCH_KEY[field]]: value } as Partial<SupaCaseRow>;
       setCases((prev) =>
         prev.map((row) =>
           row.id === c.id
@@ -963,11 +1043,44 @@ export default function SupaBoard({
           </td>
         );
       case "cs":
-        return <ClampedCell key={colKey} text={c.cs} cellKey={`${rowKey}-cs`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
+        return (
+          <ClampedCell
+            key={colKey}
+            text={c.cs}
+            cellKey={`${rowKey}-cs`}
+            expanded={expandedNotes}
+            onToggle={toggleNote}
+            lang={lang}
+            onSave={(next) => saveField(c, "cs", next)}
+            saving={fieldSaving === `${c.id}-cs`}
+          />
+        );
       case "op":
-        return <ClampedCell key={colKey} text={c.op ?? ""} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
+        return (
+          <ClampedCell
+            key={colKey}
+            text={c.op ?? ""}
+            cellKey={`${rowKey}-op`}
+            expanded={expandedNotes}
+            onToggle={toggleNote}
+            lang={lang}
+            onSave={(next) => saveField(c, "op", next)}
+            saving={fieldSaving === `${c.id}-op`}
+          />
+        );
       case "note":
-        return <ClampedCell key={colKey} text={c.content} cellKey={`${rowKey}-note`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
+        return (
+          <ClampedCell
+            key={colKey}
+            text={c.content}
+            cellKey={`${rowKey}-note`}
+            expanded={expandedNotes}
+            onToggle={toggleNote}
+            lang={lang}
+            onSave={(next) => saveField(c, "content", next)}
+            saving={fieldSaving === `${c.id}-content`}
+          />
+        );
       case "reply":
         return (
           <CommentThread

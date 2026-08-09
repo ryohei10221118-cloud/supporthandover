@@ -1555,6 +1555,62 @@ tbody tr:nth-child(even) {
   text-decoration: underline;
 }
 
+/* ---------- inline text editing (OP / CS / 內容) ---------- */
+.editable-cell {
+  cursor: text;
+}
+
+.editable-cell:hover {
+  background: var(--bg);
+}
+
+.cell-placeholder {
+  color: var(--text-muted);
+}
+
+.inline-edit-ta {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 6px;
+  resize: vertical;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.inline-edit-btns {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.inline-edit-btns button {
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 650;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.inline-edit-btns .iec-save {
+  background: var(--accent);
+  color: #fff;
+}
+
+.inline-edit-btns .iec-cancel {
+  background: var(--bg);
+  color: var(--text);
+}
+
 .empty {
   padding: 40px;
   text-align: center;

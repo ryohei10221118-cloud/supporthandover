@@ -5,13 +5,35 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
 
-// Writes one of the boards' categorical cells (the click-to-change dropdown
-// badges). Which column each field maps to depends on the board, so the two
-// are validated together rather than trusting a column name off the wire.
+// Writes one editable cell: the click-to-change dropdown badges, plus the
+// inline-editable text cells (OP / CS / 內容). Which column each field maps
+// to depends on the board, so the two are validated together rather than
+// trusting a column name off the wire.
 const FIELD_COLUMNS: Record<"t1ho" | "ho", Record<string, string>> = {
-  t1ho: { status: "status", issueTag: "issue_tag", priority: "priority" },
-  ho: { status: "status", type: "ho_type", class: "ho_class", issueTag: "issue_tag", priority: "priority" },
+  t1ho: {
+    dept: "dept",
+    status: "status",
+    issueTag: "issue_tag",
+    priority: "priority",
+    op: "op",
+    cs: "cs",
+    content: "content",
+  },
+  ho: {
+    status: "status",
+    type: "ho_type",
+    class: "ho_class",
+    issueTag: "issue_tag",
+    priority: "priority",
+    op: "op",
+    cs: "cs",
+    content: "content",
+  },
 };
+
+// 內容 is a full case description; the rest are short labels.
+const MAX_LENGTH: Record<string, number> = { content: 5000, op: 1000 };
+const DEFAULT_MAX_LENGTH = 200;
 
 export async function POST(req: Request) {
   const cookieStore = await cookies();
@@ -33,8 +55,9 @@ export async function POST(req: Request) {
   if (!column) {
     return NextResponse.json({ error: "不支援這個欄位" }, { status: 400 });
   }
-  if (value.length > 200) {
-    return NextResponse.json({ error: "內容過長" }, { status: 400 });
+  const maxLength = MAX_LENGTH[field] ?? DEFAULT_MAX_LENGTH;
+  if (value.length > maxLength) {
+    return NextResponse.json({ error: `內容過長(上限 ${maxLength} 字)` }, { status: 400 });
   }
 
   try {
