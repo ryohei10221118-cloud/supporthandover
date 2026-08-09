@@ -6,7 +6,9 @@ import { getSupabaseClient } from "./supabaseClient";
 // internal tools — not Supabase Auth's auth.users. This app's own session
 // (lib/auth.ts) only carries an email, so every write needs to resolve that
 // email to a users.id first, provisioning a row on first write if needed.
-const DEFAULT_ROLE_KEY = "Editor";
+// Default deny: a brand-new account can read and comment, nothing more,
+// until an admin promotes it.
+const DEFAULT_ROLE_KEY = "viewer";
 
 export async function resolveSupabaseUserId(email: string): Promise<string> {
   const supabase = getSupabaseClient();
