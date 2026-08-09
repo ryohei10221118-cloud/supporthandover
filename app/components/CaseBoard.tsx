@@ -101,10 +101,11 @@ const STRINGS = {
   updateFailed: { zh: "更新失敗", en: "Update failed" },
   edit: { zh: "✎ 編輯", en: "✎ Edit" },
   changeStatus: { zh: "變更狀態", en: "Change status" },
-  hideOlder: { zh: "▲ 收合", en: "▲ Hide" },
-  showOlder: { zh: "▼ 顯示", en: "▼ Show" },
-  olderRecords: { zh: (n: number) => `1個月前的紀錄(${n}筆)`, en: (n: number) => `records older than 1 month (${n})` },
   noMatchingCases: { zh: "沒有符合條件的案件", en: "No matching cases" },
+  perPage: { zh: "每頁顯示", en: "Per page" },
+  pagePrev: { zh: "‹", en: "‹" },
+  pageNext: { zh: "›", en: "›" },
+  pageIndicator: { zh: (page: number, total: number) => `${page} / ${total}`, en: (page: number, total: number) => `${page} / ${total}` },
 } satisfies Record<string, Record<Lang, StringEntry>>;
 
 function t<K extends keyof typeof STRINGS>(
@@ -764,20 +765,26 @@ export default function CaseBoard({
     setDateSort((prev) => (prev === "none" ? "desc" : prev === "desc" ? "asc" : "none"));
   }
 
-  const OLD_THRESHOLD_DAYS = 30;
-  const [showOlder, setShowOlder] = useState(false);
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const { recentRows, olderRows } = useMemo(() => {
-    const recent: CaseRow[] = [];
-    const older: CaseRow[] = [];
-    for (const c of sorted) {
-      // A date we couldn't parse is treated as old rather than recent —
-      // malformed historical rows shouldn't default to showing up front.
-      if (c.daysOpen === null || c.daysOpen > OLD_THRESHOLD_DAYS) older.push(c);
-      else recent.push(c);
-    }
-    return { recentRows: recent, olderRows: older };
-  }, [sorted]);
+  // A changed filter/search almost always means "I'm looking for something
+  // else now" — stay on whatever page number matched the old result set
+  // would land somewhere unrelated to what's now on screen.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filtered]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  // Changing the page size, or filtering to fewer rows than the current page
+  // can hold, shouldn't strand the view on a now out-of-range page.
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+  const pagedRows = useMemo(
+    () => sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [sorted, currentPage, pageSize]
+  );
 
   // All four summary stats only count cases with a recognized 部門 value —
   // blank/legacy/typo department values are excluded from official totals.
@@ -1399,15 +1406,7 @@ export default function CaseBoard({
             </tr>
           </thead>
           <tbody>
-            {recentRows.map((c, i) => renderRow(c, `recent-${i}`))}
-            {olderRows.length > 0 && (
-              <tr>
-                <td colSpan={columnOrder.length} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
-                  {showOlder ? t(lang, "hideOlder") : t(lang, "showOlder")} {t(lang, "olderRecords", olderRows.length)}
-                </td>
-              </tr>
-            )}
-            {showOlder && olderRows.map((c, i) => renderRow(c, `older-${i}`))}
+            {pagedRows.map((c, i) => renderRow(c, `row-${i}`))}
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={columnOrder.length} className="empty">
@@ -1417,6 +1416,30 @@ export default function CaseBoard({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="pagination-bar">
+        <div className="page-size-group">
+          <span>{t(lang, "perPage")}</span>
+          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+          </select>
+        </div>
+        <div className="page-nav">
+          <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>
+            {t(lang, "pagePrev")}
+          </button>
+          <span className="page-indicator">{t(lang, "pageIndicator", currentPage, totalPages)}</span>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+          >
+            {t(lang, "pageNext")}
+          </button>
+        </div>
       </div>
     </div>
   );
