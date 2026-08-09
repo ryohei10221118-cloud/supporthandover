@@ -60,6 +60,7 @@ const STRINGS = {
   completedCases: { zh: "已完成", en: "Completed" },
   overdueCases: { zh: "逾期(超過3天未完成)", en: "Overdue (>3 days open)" },
   allDepartments: { zh: "全部部門", en: "All departments" },
+  allIssueTags: { zh: "全部 Issue Tag", en: "All issue tags" },
   allStatuses: { zh: "全部狀態", en: "All statuses" },
   nSelected: { zh: (n: number) => `已選 ${n} 項`, en: (n: number) => `${n} selected` },
   dateRangeLabel: { zh: "日期範圍快速選擇", en: "Date range quick select" },
@@ -687,6 +688,7 @@ export default function CaseBoard({
 
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedIssueTags, setSelectedIssueTags] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -728,11 +730,17 @@ export default function CaseBoard({
     });
   }, [cases]);
 
+  const issueTags = useMemo(
+    () => Array.from(new Set(cases.map((c) => c.issue.trim()).filter(Boolean))).sort(),
+    [cases]
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cases.filter((c) => {
       if (selectedDepartments.length > 0 && !selectedDepartments.includes(c.department)) return false;
       if (selectedStatuses.length > 0 && !selectedStatuses.includes(statusCategory(c.status))) return false;
+      if (selectedIssueTags.length > 0 && !selectedIssueTags.includes(c.issue.trim())) return false;
       if (dateFrom && c.date < dateFrom) return false;
       if (dateTo && c.date > dateTo) return false;
       if (q) {
@@ -741,7 +749,7 @@ export default function CaseBoard({
       }
       return true;
     });
-  }, [cases, selectedDepartments, selectedStatuses, dateFrom, dateTo, search]);
+  }, [cases, selectedDepartments, selectedStatuses, selectedIssueTags, dateFrom, dateTo, search]);
 
   const sorted = useMemo(() => {
     const withMeta = filtered.map((c) => ({
@@ -1303,6 +1311,13 @@ export default function CaseBoard({
             lang={lang}
             labelFor={(opt) => (opt === COMPLETED_LABEL ? t(lang, "completedCases") : opt)}
           />
+          <MultiSelect
+            allLabel={t(lang, "allIssueTags")}
+            options={issueTags}
+            selected={selectedIssueTags}
+            onChange={setSelectedIssueTags}
+            lang={lang}
+          />
           <div className="date-range">
             <select
               value={datePreset}
@@ -1360,13 +1375,19 @@ export default function CaseBoard({
             />
             <span className="result-count">{t(lang, "resultCount", filteredValidCount)}</span>
           </div>
-          {(selectedDepartments.length > 0 || selectedStatuses.length > 0 || dateFrom || dateTo || search) && (
+          {(selectedDepartments.length > 0 ||
+            selectedStatuses.length > 0 ||
+            selectedIssueTags.length > 0 ||
+            dateFrom ||
+            dateTo ||
+            search) && (
             <button
               type="button"
               className="refresh-btn"
               onClick={() => {
                 setSelectedDepartments([]);
                 setSelectedStatuses([]);
+                setSelectedIssueTags([]);
                 setDateFrom("");
                 setDateTo("");
                 setDatePreset("all");

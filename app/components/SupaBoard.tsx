@@ -290,13 +290,67 @@ function CommentThread({
   );
 }
 
+function MultiSelect({
+  allLabel,
+  options,
+  selected,
+  onChange,
+}: {
+  allLabel: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const summary = selected.length === 0 ? allLabel : selected.length === 1 ? selected[0] : `已選 ${selected.length} 項`;
+
+  function toggle(opt: string) {
+    onChange(selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt]);
+  }
+
+  return (
+    <div className="multiselect" ref={rootRef}>
+      <button type="button" className="multiselect-summary" onClick={() => setOpen((o) => !o)}>
+        {summary} {open ? "▴" : "▾"}
+      </button>
+      {open && (
+        <div className="multiselect-menu">
+          <label className="multiselect-option">
+            <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} />
+            {allLabel}
+          </label>
+          {options.map((opt) => (
+            <label key={opt} className="multiselect-option">
+              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SupaBoard({ board, initialCases, initialError }: { board: SupaBoard; initialCases: SupaCaseRow[]; initialError: string | null }) {
   const [cases, setCases] = useState(initialCases);
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
 
-  const [groupFilter, setGroupFilter] = useState("all"); // 部門 (t1ho) / Type (ho)
-  const [status, setStatus] = useState("all");
+  const [groupFilter, setGroupFilter] = useState<string[]>([]); // 部門 (t1ho) / Type (ho)
+  const [classFilter, setClassFilter] = useState<string[]>([]); // Classification (ho only)
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
+  const [issueTagFilter, setIssueTagFilter] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
@@ -408,6 +462,11 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     [cases, board]
   );
 
+  const classifications = useMemo(
+    () => Array.from(new Set(cases.map((c) => c.hoClass ?? "").filter(Boolean))).sort(),
+    [cases]
+  );
+
   const statuses = useMemo(() => {
     const order = board === "t1ho" ? T1HO_STATUS_ORDER : HO_STATUS_ORDER;
     const unique = Array.from(
@@ -423,21 +482,34 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     });
   }, [cases, board]);
 
+  const priorities = useMemo(
+    () => Array.from(new Set(cases.map((c) => c.priority.trim()).filter(Boolean))).sort(),
+    [cases]
+  );
+
+  const issueTags = useMemo(
+    () => Array.from(new Set(cases.map((c) => c.issueTag ?? "").filter(Boolean))).sort(),
+    [cases]
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cases.filter((c) => {
-      if (groupFilter !== "all" && groupValue(c) !== groupFilter) return false;
-      if (status !== "all") {
+      if (groupFilter.length > 0 && !groupFilter.includes(groupValue(c))) return false;
+      if (board === "ho" && classFilter.length > 0 && !classFilter.includes(c.hoClass ?? "")) return false;
+      if (statusFilter.length > 0) {
         const cat = board === "t1ho" ? t1hoStatusCategory(c.status) : c.status.trim();
-        if (cat !== status) return false;
+        if (!statusFilter.includes(cat)) return false;
       }
+      if (priorityFilter.length > 0 && !priorityFilter.includes(c.priority.trim())) return false;
+      if (issueTagFilter.length > 0 && !issueTagFilter.includes(c.issueTag ?? "")) return false;
       if (q) {
         const haystack = `${c.seq} ${c.op ?? ""} ${c.cs} ${c.content} ${c.latestNote} ${c.issueTag ?? ""}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [cases, groupFilter, status, search, board]);
+  }, [cases, groupFilter, classFilter, statusFilter, priorityFilter, issueTagFilter, search, board]);
 
   const sorted = useMemo(() => {
     const withMeta = filtered.map((c) => ({ c, t: new Date(c.date).getTime() || 0, n: seqNumber(c.seq) }));
@@ -695,22 +767,34 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
       <div className="toolbar">
         <div className="filters">
-          <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
-            <option value="all">全部{groupLabel}</option>
-            {groups.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="all">全部状态</option>
-            {statuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <MultiSelect allLabel={`全部${groupLabel}`} options={groups} selected={groupFilter} onChange={setGroupFilter} />
+          {board === "ho" && (
+            <MultiSelect allLabel="全部 Classification" options={classifications} selected={classFilter} onChange={setClassFilter} />
+          )}
+          <MultiSelect allLabel="全部狀態" options={statuses} selected={statusFilter} onChange={setStatusFilter} />
+          <MultiSelect allLabel="全部 Priority" options={priorities} selected={priorityFilter} onChange={setPriorityFilter} />
+          <MultiSelect allLabel="全部 Issue Tag" options={issueTags} selected={issueTagFilter} onChange={setIssueTagFilter} />
+          {(groupFilter.length > 0 ||
+            classFilter.length > 0 ||
+            statusFilter.length > 0 ||
+            priorityFilter.length > 0 ||
+            issueTagFilter.length > 0 ||
+            search) && (
+            <button
+              type="button"
+              className="refresh-btn"
+              onClick={() => {
+                setGroupFilter([]);
+                setClassFilter([]);
+                setStatusFilter([]);
+                setPriorityFilter([]);
+                setIssueTagFilter([]);
+                setSearch("");
+              }}
+            >
+              清除篩選
+            </button>
+          )}
           <input
             type="text"
             placeholder="搜寻序列 / OP / CS / 内容..."
