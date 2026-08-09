@@ -477,6 +477,144 @@ h1 {
   white-space: nowrap;
 }
 
+.range-picker {
+  position: relative;
+}
+
+.range-picker-trigger {
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.range-picker-trigger:hover {
+  border-color: var(--accent);
+}
+
+.range-calendar {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 12;
+  width: 244px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 12px;
+}
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.cal-head button {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.cal-head button:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.cal-dow-row,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cal-dow-row span {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2px 0 4px;
+}
+
+.cal-day {
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 6px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text);
+}
+
+.cal-day:hover {
+  background: var(--bg);
+}
+
+.cal-day:disabled {
+  visibility: hidden;
+  cursor: default;
+}
+
+.cal-day.in-range {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-radius: 0;
+}
+
+.cal-day.range-start,
+.cal-day.range-end {
+  background: var(--accent);
+  color: #fff;
+}
+
+.cal-day.range-start {
+  border-radius: 6px 0 0 6px;
+}
+
+.cal-day.range-end {
+  border-radius: 0 6px 6px 0;
+}
+
+.cal-day.range-start.range-end {
+  border-radius: 6px;
+}
+
+.cal-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cal-foot button {
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.cal-foot button:hover {
+  text-decoration: underline;
+}
+
 th.sortable {
   cursor: pointer;
   user-select: none;

@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
+import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 
 const T1HO_STATUS_ORDER = ["pending", "follow up", "move to ho", "已完成"];
 const HO_STATUS_ORDER = ["follow up", "procedure", "note", "done", "closed for us"];
@@ -351,7 +352,16 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [issueTagFilter, setIssueTagFilter] = useState<string[]>([]);
+  const [dateType, setDateType] = useState<DateType>("create");
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [rangeStart, setRangeStart] = useState<Date | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
   const [search, setSearch] = useState("");
+
+  const dateBounds = useMemo(
+    () => dateBoundsForPreset(datePreset, rangeStart, rangeEnd),
+    [datePreset, rangeStart, rangeEnd]
+  );
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
@@ -503,13 +513,17 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       }
       if (priorityFilter.length > 0 && !priorityFilter.includes(c.priority.trim())) return false;
       if (issueTagFilter.length > 0 && !issueTagFilter.includes(c.issueTag ?? "")) return false;
+      if (dateBounds) {
+        const d = dateType === "update" ? c.updateDate || c.date : c.date;
+        if (d < dateBounds[0] || d > dateBounds[1]) return false;
+      }
       if (q) {
         const haystack = `${c.seq} ${c.op ?? ""} ${c.cs} ${c.content} ${c.latestNote} ${c.issueTag ?? ""}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [cases, groupFilter, classFilter, statusFilter, priorityFilter, issueTagFilter, search, board]);
+  }, [cases, groupFilter, classFilter, statusFilter, priorityFilter, issueTagFilter, dateBounds, dateType, search, board]);
 
   const sorted = useMemo(() => {
     const withMeta = filtered.map((c) => ({ c, t: new Date(c.date).getTime() || 0, n: seqNumber(c.seq) }));
@@ -774,11 +788,25 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           <MultiSelect allLabel="全部狀態" options={statuses} selected={statusFilter} onChange={setStatusFilter} />
           <MultiSelect allLabel="全部 Priority" options={priorities} selected={priorityFilter} onChange={setPriorityFilter} />
           <MultiSelect allLabel="全部 Issue Tag" options={issueTags} selected={issueTagFilter} onChange={setIssueTagFilter} />
+          <DateRangeFilter
+            lang="zh"
+            dateType={dateType}
+            onDateTypeChange={setDateType}
+            preset={datePreset}
+            onPresetChange={setDatePreset}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onRangeChange={(start, end) => {
+              setRangeStart(start);
+              setRangeEnd(end);
+            }}
+          />
           {(groupFilter.length > 0 ||
             classFilter.length > 0 ||
             statusFilter.length > 0 ||
             priorityFilter.length > 0 ||
             issueTagFilter.length > 0 ||
+            datePreset !== "all" ||
             search) && (
             <button
               type="button"
@@ -789,19 +817,24 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
                 setStatusFilter([]);
                 setPriorityFilter([]);
                 setIssueTagFilter([]);
+                setDatePreset("all");
+                setRangeStart(null);
+                setRangeEnd(null);
                 setSearch("");
               }}
             >
               清除篩選
             </button>
           )}
-          <input
-            type="text"
-            placeholder="搜寻序列 / OP / CS / 内容..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <span className="result-count">筛选出 {filtered.length} 笔</span>
+          <div className="search-group">
+            <input
+              type="text"
+              placeholder="搜尋序列 / OP / CS / 內容..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <span className="result-count">篩選出 {filtered.length} 筆</span>
+          </div>
         </div>
         <button className="refresh-btn" onClick={refresh} disabled={loading}>
           {loading ? "更新中..." : "重新整理"}

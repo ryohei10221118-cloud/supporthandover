@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import type { CaseRow } from "@/lib/types";
+import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
 
@@ -63,17 +64,6 @@ const STRINGS = {
   allIssueTags: { zh: "全部 Issue Tag", en: "All issue tags" },
   allStatuses: { zh: "全部狀態", en: "All statuses" },
   nSelected: { zh: (n: number) => `已選 ${n} 項`, en: (n: number) => `${n} selected` },
-  dateRangeLabel: { zh: "日期範圍快速選擇", en: "Date range quick select" },
-  allTime: { zh: "全部時間", en: "All time" },
-  last7Days: { zh: "最近7天", en: "Last 7 days" },
-  last30Days: { zh: "最近30天", en: "Last 30 days" },
-  thisMonth: { zh: "本月", en: "This month" },
-  lastMonth: { zh: "上月", en: "Last month" },
-  customRange: { zh: "自訂區間", en: "Custom range" },
-  startDate: { zh: "起始日期", en: "Start date" },
-  endDate: { zh: "結束日期", en: "End date" },
-  dateTo: { zh: "至", en: "to" },
-  clear: { zh: "清除", en: "Clear" },
   clearAllFilters: { zh: "清除篩選", en: "Clear filters" },
   searchPlaceholder: { zh: "搜尋序列 / OP / CS / 內容...", en: "Search seq / OP / CS / content..." },
   resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
@@ -690,32 +680,20 @@ export default function CaseBoard({
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedIssueTags, setSelectedIssueTags] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [datePreset, setDatePreset] = useState("all");
+  // T1 HO's Sheet only ever tracked one date per case (回報日期), so the
+  // 新增日期/更新日期 selector below has nothing separate to switch between —
+  // it's kept for structural parity with the HO board's filter bar (which
+  // does have both), and both options simply filter on the same field here.
+  const [dateType, setDateType] = useState<DateType>("create");
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [rangeStart, setRangeStart] = useState<Date | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
 
-  function applyDatePreset(preset: string) {
-    setDatePreset(preset);
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
-    const today = new Date();
-    if (preset === "all") {
-      setDateFrom("");
-      setDateTo("");
-    } else if (preset === "7" || preset === "30") {
-      const from = new Date(today);
-      from.setDate(from.getDate() - (Number(preset) - 1));
-      setDateFrom(fmt(from));
-      setDateTo(fmt(today));
-    } else if (preset === "thisMonth") {
-      setDateFrom(fmt(new Date(today.getFullYear(), today.getMonth(), 1)));
-      setDateTo(fmt(today));
-    } else if (preset === "lastMonth") {
-      setDateFrom(fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1)));
-      setDateTo(fmt(new Date(today.getFullYear(), today.getMonth(), 0)));
-    }
-    // "custom": leave dateFrom/dateTo untouched, user is typing them directly
-  }
+  const dateBounds = useMemo(
+    () => dateBoundsForPreset(datePreset, rangeStart, rangeEnd),
+    [datePreset, rangeStart, rangeEnd]
+  );
 
   const departments: string[] = Array.from(OFFICIAL_DEPARTMENTS);
   const statuses = useMemo(() => {
@@ -741,15 +719,14 @@ export default function CaseBoard({
       if (selectedDepartments.length > 0 && !selectedDepartments.includes(c.department)) return false;
       if (selectedStatuses.length > 0 && !selectedStatuses.includes(statusCategory(c.status))) return false;
       if (selectedIssueTags.length > 0 && !selectedIssueTags.includes(c.issue.trim())) return false;
-      if (dateFrom && c.date < dateFrom) return false;
-      if (dateTo && c.date > dateTo) return false;
+      if (dateBounds && (c.date < dateBounds[0] || c.date > dateBounds[1])) return false;
       if (q) {
         const haystack = `${c.seq} ${c.op} ${c.cs} ${c.note} ${c.reply}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [cases, selectedDepartments, selectedStatuses, selectedIssueTags, dateFrom, dateTo, search]);
+  }, [cases, selectedDepartments, selectedStatuses, selectedIssueTags, dateBounds, search]);
 
   const sorted = useMemo(() => {
     const withMeta = filtered.map((c) => ({
@@ -1318,54 +1295,19 @@ export default function CaseBoard({
             onChange={setSelectedIssueTags}
             lang={lang}
           />
-          <div className="date-range">
-            <select
-              value={datePreset}
-              onChange={(e) => applyDatePreset(e.target.value)}
-              aria-label={t(lang, "dateRangeLabel")}
-            >
-              <option value="all">{t(lang, "allTime")}</option>
-              <option value="7">{t(lang, "last7Days")}</option>
-              <option value="30">{t(lang, "last30Days")}</option>
-              <option value="thisMonth">{t(lang, "thisMonth")}</option>
-              <option value="lastMonth">{t(lang, "lastMonth")}</option>
-              <option value="custom">{t(lang, "customRange")}</option>
-            </select>
-            <input
-              type="date"
-              lang="en-US"
-              value={dateFrom}
-              onChange={(e) => {
-                setDateFrom(e.target.value);
-                setDatePreset("custom");
-              }}
-              aria-label={t(lang, "startDate")}
-            />
-            <span>{t(lang, "dateTo")}</span>
-            <input
-              type="date"
-              lang="en-US"
-              value={dateTo}
-              onChange={(e) => {
-                setDateTo(e.target.value);
-                setDatePreset("custom");
-              }}
-              aria-label={t(lang, "endDate")}
-            />
-            {(dateFrom || dateTo) && (
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => {
-                  setDateFrom("");
-                  setDateTo("");
-                  setDatePreset("all");
-                }}
-              >
-                {t(lang, "clear")}
-              </button>
-            )}
-          </div>
+          <DateRangeFilter
+            lang={lang}
+            dateType={dateType}
+            onDateTypeChange={setDateType}
+            preset={datePreset}
+            onPresetChange={setDatePreset}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onRangeChange={(start, end) => {
+              setRangeStart(start);
+              setRangeEnd(end);
+            }}
+          />
           <div className="search-group">
             <input
               type="text"
@@ -1378,8 +1320,7 @@ export default function CaseBoard({
           {(selectedDepartments.length > 0 ||
             selectedStatuses.length > 0 ||
             selectedIssueTags.length > 0 ||
-            dateFrom ||
-            dateTo ||
+            datePreset !== "all" ||
             search) && (
             <button
               type="button"
@@ -1388,9 +1329,9 @@ export default function CaseBoard({
                 setSelectedDepartments([]);
                 setSelectedStatuses([]);
                 setSelectedIssueTags([]);
-                setDateFrom("");
-                setDateTo("");
                 setDatePreset("all");
+                setRangeStart(null);
+                setRangeEnd(null);
                 setSearch("");
               }}
             >
