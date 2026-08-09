@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import SiteNav from "./components/SiteNav";
 
 export const metadata: Metadata = {
   title: "T1HO case board",
@@ -80,6 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-Hant" suppressHydrationWarning>
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <SiteNav />
         {children}
       </body>
     </html>

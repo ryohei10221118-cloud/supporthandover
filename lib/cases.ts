@@ -12,7 +12,7 @@ export function isCompletedStatus(status: string): boolean {
   return COMPLETED_STATUSES.has(status.trim().toLowerCase());
 }
 
-function daysSince(dateStr: string): number | null {
+export function daysSince(dateStr: string): number | null {
   const trimmed = dateStr.trim();
   if (!trimmed) return null;
   let parsed = new Date(trimmed);

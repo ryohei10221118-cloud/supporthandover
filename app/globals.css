@@ -33,6 +33,28 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+.site-nav {
+  display: flex;
+  gap: 4px;
+  padding: 14px 20px 0;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.site-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.site-nav a:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
 .page {
   position: relative;
   max-width: 1600px;
@@ -396,6 +418,10 @@ tr.overdue td {
 .badge.status-movetoho { background: #e9d5ff; color: #6b21a8; }
 .badge.status-closed { background: #dcfce7; color: #166534; }
 .badge.status-other { background: #e5e7eb; color: #374151; }
+.badge.status-done { background: #86efac; color: #14532d; }
+.badge.status-closedforus { background: #bfdbfe; color: #1e3a8a; }
+.badge.status-note { background: #e5e7eb; color: #374151; }
+.badge.status-procedure { background: #99f6e4; color: #115e59; }
 
 .badge.overdue-tag {
   background: var(--overdue);
