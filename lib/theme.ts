@@ -116,12 +116,15 @@ export function applyTheme(state: ThemeState) {
   root.style.setProperty("--text-muted", state.mode === "light" ? "#6b7280" : "#9aa0a8");
   root.style.setProperty("--overdue", state.mode === "light" ? "#dc2626" : "#f87171");
   root.style.setProperty("--overdue-bg", state.mode === "light" ? "#fef2f2" : "#3a1d1d");
-  // The sidebar is always a dark chrome, independent of the picked accent —
-  // just a slightly darker variant in dark mode, matching the design mockup.
-  root.style.setProperty("--sidebar", state.mode === "light" ? "#211417" : "#0f0b0c");
-  root.style.setProperty("--sidebar-text", "#ece1e2");
-  root.style.setProperty("--sidebar-text-muted", state.mode === "light" ? "#b09a9c" : "#8c797b");
-  root.style.setProperty("--sidebar-active", state.mode === "light" ? "#332124" : "#24181a");
+  // The sidebar is a dark chrome that also leans into the picked accent's
+  // hue (same idea as --bg/--surface above), just at much lower lightness
+  // so it stays dark in both modes.
+  const isDark = state.mode === "dark";
+  root.style.setProperty("--sidebar", hslToHex(hue, isDark ? 16 : 25, isDark ? 5 : 10));
+  root.style.setProperty("--sidebar-active", hslToHex(hue, isDark ? 20 : 22, isDark ? 12 : 16));
+  root.style.setProperty("--sidebar-text", hslToHex(hue, 22, 90));
+  root.style.setProperty("--sidebar-text-muted", hslToHex(hue, isDark ? 8 : 12, isDark ? 51 : 65));
+  root.style.setProperty("--dot-opacity", isDark ? "0.16" : "0.05");
   root.dataset.theme = state.mode;
 }
 

@@ -11,6 +11,7 @@
   --sidebar-text: #ece1e2;
   --sidebar-text-muted: #b09a9c;
   --sidebar-active: #332124;
+  --dot-opacity: 0.05;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,6 +28,7 @@
     --sidebar-text: #ece1e2;
     --sidebar-text-muted: #8c797b;
     --sidebar-active: #24181a;
+    --dot-opacity: 0.16;
   }
 }
 
@@ -50,6 +52,19 @@ body {
 .app-content {
   flex: 1;
   min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.dotfield {
+  position: absolute;
+  top: -180px;
+  right: -180px;
+  width: 560px;
+  height: 560px;
+  pointer-events: none;
+  opacity: var(--dot-opacity);
+  z-index: 0;
 }
 
 .sidebar {

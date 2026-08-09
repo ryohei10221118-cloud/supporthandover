@@ -79,10 +79,12 @@ const THEME_INIT_SCRIPT = `(function () {
     root.style.setProperty("--text-muted", mode === "light" ? "#6b7280" : "#9aa0a8");
     root.style.setProperty("--overdue", mode === "light" ? "#dc2626" : "#f87171");
     root.style.setProperty("--overdue-bg", mode === "light" ? "#fef2f2" : "#3a1d1d");
-    root.style.setProperty("--sidebar", mode === "light" ? "#211417" : "#0f0b0c");
-    root.style.setProperty("--sidebar-text", "#ece1e2");
-    root.style.setProperty("--sidebar-text-muted", mode === "light" ? "#b09a9c" : "#8c797b");
-    root.style.setProperty("--sidebar-active", mode === "light" ? "#332124" : "#24181a");
+    var isDark = mode === "dark";
+    root.style.setProperty("--sidebar", hslToHex(hue, isDark ? 16 : 25, isDark ? 5 : 10));
+    root.style.setProperty("--sidebar-active", hslToHex(hue, isDark ? 20 : 22, isDark ? 12 : 16));
+    root.style.setProperty("--sidebar-text", hslToHex(hue, 22, 90));
+    root.style.setProperty("--sidebar-text-muted", hslToHex(hue, isDark ? 8 : 12, isDark ? 51 : 65));
+    root.style.setProperty("--dot-opacity", isDark ? "0.16" : "0.05");
     root.dataset.theme = mode;
   } catch (e) {}
 })();`;
@@ -98,7 +100,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <div className="app">
           <Sidebar />
-          <div className="app-content">{children}</div>
+          <div className="app-content">
+            <svg className="dotfield" viewBox="0 0 47 47" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="25" cy="25" r="1.849" fill="var(--accent)" />
+              <circle cx="25" cy="17" r="1.849" fill="var(--accent)" opacity="0.8" />
+              <circle cx="25" cy="9" r="1.849" fill="var(--accent)" opacity="0.6" />
+              <circle cx="33" cy="25" r="1.849" fill="var(--accent)" opacity="0.85" />
+              <circle cx="17" cy="25" r="1.849" fill="var(--accent)" />
+              <circle cx="9" cy="25" r="1.849" fill="var(--accent)" opacity="0.75" />
+              <circle cx="19" cy="19" r="1.849" fill="var(--accent)" opacity="0.9" />
+              <circle cx="31" cy="19" r="1.849" fill="var(--accent)" opacity="0.85" />
+              <circle cx="31" cy="31" r="1.849" fill="var(--accent)" opacity="0.7" />
+              <circle cx="19" cy="31" r="1.849" fill="var(--accent)" opacity="0.3" />
+              <circle cx="25" cy="41" r="1.849" fill="var(--accent)" opacity="0.5" />
+              <circle cx="41" cy="25" r="1.849" fill="var(--accent)" opacity="0.7" />
+              <circle cx="8" cy="8" r="1.849" fill="var(--accent)" opacity="0.9" />
+              <circle cx="42" cy="42" r="1.849" fill="var(--accent)" opacity="0.5" />
+              <circle cx="42" cy="8" r="1.849" fill="var(--accent)" opacity="0.8" />
+              <circle cx="8" cy="42" r="1.849" fill="var(--accent)" opacity="0.3" />
+            </svg>
+            {children}
+          </div>
         </div>
       </body>
     </html>
