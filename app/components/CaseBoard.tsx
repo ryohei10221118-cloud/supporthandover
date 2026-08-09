@@ -1022,7 +1022,11 @@ export default function CaseBoard({
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    setMe(null);
+    // Every page now requires a session (see proxy.ts) — a plain setMe(null)
+    // would leave the already-rendered board sitting on screen with no way
+    // back in except a manual reload. Force a full navigation so the proxy
+    // gate re-evaluates and sends us to /login.
+    window.location.href = "/login";
   }
 
   // --- Comment / status write panel ---
