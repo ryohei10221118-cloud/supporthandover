@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import type { SupaBoard, SupaCaseRow } from "@/lib/supabaseCases";
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 
 const T1HO_STATUS_ORDER = ["pending", "follow up", "move to ho", "已完成"];
 const HO_STATUS_ORDER = ["follow up", "procedure", "note", "done", "closed for us"];
@@ -32,6 +32,24 @@ function t1hoStatusCategory(status: string): string {
 function seqNumber(seq: string): number {
   const match = seq.match(/(\d+)\s*$/);
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+// The part of the email before "@" — used as the commenter's display name,
+// matching lib/auth.ts's displayNameFromEmail (that one's server-only, so
+// this is a small duplicate rather than a shared import).
+function displayNameFromEmail(email: string): string {
+  return email.split("@")[0];
+}
+
+// MM/DD HH:MM in UTC+8, matching the T1 HO Sheets board's comment format.
+function formatTimestampUTC8(iso: string): string {
+  const date = new Date(iso);
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(shifted.getUTCDate()).padStart(2, "0");
+  const hh = String(shifted.getUTCHours()).padStart(2, "0");
+  const min = String(shifted.getUTCMinutes()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${min}`;
 }
 
 function priorityClass(priority: string): string {
@@ -188,6 +206,90 @@ function ClampedCell({
   );
 }
 
+function CommentThread({
+  comments,
+  cellKey,
+  expanded,
+  onToggleClamp,
+  editingId,
+  editDraft,
+  onEditDraftChange,
+  editSubmitting,
+  editError,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
+}: {
+  comments: SupaComment[];
+  cellKey: string;
+  expanded: Set<string>;
+  onToggleClamp: (key: string) => void;
+  editingId: string | null;
+  editDraft: string;
+  onEditDraftChange: (v: string) => void;
+  editSubmitting: boolean;
+  editError: string | null;
+  onStartEdit: (id: string, message: string) => void;
+  onCancelEdit: () => void;
+  onSubmitEdit: (id: string) => void;
+}) {
+  const combinedText = comments.map((c) => c.body).join("\n\n");
+  const isLong = isVisuallyLong(combinedText);
+  const isExpanded = expanded.has(cellKey);
+
+  if (comments.length === 0) return <td className="note-cell" />;
+
+  return (
+    <td className="note-cell">
+      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
+        {comments.map((c) => {
+          const entryKey = `${cellKey}-${c.id}`;
+          const isEditingThis = editingId === c.id;
+          return (
+            <div key={entryKey} className="reply-entry">
+              {isEditingThis ? (
+                <>
+                  <textarea
+                    className="comment-textarea"
+                    value={editDraft}
+                    onChange={(e) => onEditDraftChange(e.target.value)}
+                    rows={3}
+                  />
+                  <div className="comment-actions">
+                    <button type="button" className="comment-submit" disabled={editSubmitting} onClick={() => onSubmitEdit(c.id)}>
+                      {editSubmitting ? "儲存中..." : "儲存"}
+                    </button>
+                    <button type="button" className="link-btn" onClick={onCancelEdit}>
+                      取消
+                    </button>
+                  </div>
+                  {editError && <div className="comment-error">{editError}</div>}
+                </>
+              ) : (
+                <>
+                  <div>
+                    <strong>{formatTimestampUTC8(c.createdAt)}</strong> {displayNameFromEmail(c.authorEmail)}
+                    {c.editedAt && <span className="reply-support-tag">已編輯</span>}
+                  </div>
+                  {linkify(c.body, entryKey)}
+                  <button type="button" className="note-toggle" onClick={() => onStartEdit(c.id, c.body)}>
+                    編輯
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {isLong && (
+        <button type="button" className="note-toggle" onClick={() => onToggleClamp(cellKey)}>
+          {isExpanded ? "▲ 收合" : "⋯ 顯示更多"}
+        </button>
+      )}
+    </td>
+  );
+}
+
 export default function SupaBoard({ board, initialCases, initialError }: { board: SupaBoard; initialCases: SupaCaseRow[]; initialError: string | null }) {
   const [cases, setCases] = useState(initialCases);
   const [error, setError] = useState(initialError);
@@ -206,6 +308,96 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       else next.add(key);
       return next;
     });
+  }
+
+  // --- Comment write / edit panel ---
+  const [openCommentKey, setOpenCommentKey] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function openComment(key: string) {
+    setOpenCommentKey(key);
+    setCommentDraft("");
+    setCommentError(null);
+  }
+
+  async function submitComment(c: SupaCaseRow) {
+    if (!commentDraft.trim()) {
+      setCommentError("請輸入留言內容");
+      return;
+    }
+    setCommentSubmitting(true);
+    setCommentError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: c.id, board, message: commentDraft.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCommentError(data.error || "留言失敗");
+        return;
+      }
+      const newComment: SupaComment = data.comment;
+      setCases((prev) => prev.map((row) => (row.id === c.id ? { ...row, comments: [...row.comments, newComment], latestNote: newComment.body } : row)));
+      setOpenCommentKey(null);
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
+  function startEdit(id: string, message: string) {
+    setEditingCommentId(id);
+    setEditDraft(message);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingCommentId(null);
+    setEditError(null);
+  }
+
+  async function submitEdit(caseId: string, commentId: string) {
+    if (!editDraft.trim()) {
+      setEditError("請輸入留言內容");
+      return;
+    }
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/comment/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentId, newMessage: editDraft.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditError(data.error || "儲存失敗");
+        return;
+      }
+      setCases((prev) =>
+        prev.map((row) =>
+          row.id === caseId
+            ? {
+                ...row,
+                comments: row.comments.map((cm) =>
+                  cm.id === commentId ? { ...cm, body: data.comment.body, editedAt: data.comment.edited_at } : cm
+                ),
+              }
+            : row
+        )
+      );
+      setEditingCommentId(null);
+    } finally {
+      setEditSubmitting(false);
+    }
   }
 
   const groupLabel = board === "t1ho" ? "部門" : "Type";
@@ -382,7 +574,23 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       case "note":
         return <ClampedCell key={colKey} text={c.content} cellKey={`${rowKey}-note`} expanded={expandedNotes} onToggle={toggleNote} />;
       case "reply":
-        return <ClampedCell key={colKey} text={c.latestNote} cellKey={`${rowKey}-reply`} expanded={expandedNotes} onToggle={toggleNote} />;
+        return (
+          <CommentThread
+            key={colKey}
+            comments={c.comments}
+            cellKey={`${rowKey}-reply`}
+            expanded={expandedNotes}
+            onToggleClamp={toggleNote}
+            editingId={editingCommentId}
+            editDraft={editDraft}
+            onEditDraftChange={setEditDraft}
+            editSubmitting={editSubmitting}
+            editError={editError}
+            onStartEdit={startEdit}
+            onCancelEdit={cancelEdit}
+            onSubmitEdit={(commentId) => submitEdit(c.id, commentId)}
+          />
+        );
       case "relatedTicket":
         return <td key={colKey}>{c.relatedTicketLabel}</td>;
       case "updateDate":
@@ -394,6 +602,13 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           <td key={colKey}>
             <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
             {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+            <button
+              type="button"
+              className="comment-trigger"
+              onClick={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
+            >
+              {openCommentKey === rowKey ? "取消" : "+更新"}
+            </button>
           </td>
         );
       case "priority":
@@ -414,9 +629,30 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
   function renderRow(c: SupaCaseRow, key: string) {
     return (
-      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
-        {columnOrder.map((colKey) => renderCell(colKey, c, key))}
-      </tr>
+      <Fragment key={key}>
+        <tr className={c.isOverdue ? "overdue" : undefined}>
+          {columnOrder.map((colKey) => renderCell(colKey, c, key))}
+        </tr>
+        {openCommentKey === key && (
+          <tr>
+            <td colSpan={columnOrder.length} className="comment-row">
+              <textarea
+                className="comment-textarea"
+                value={commentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
+                placeholder="輸入留言，會加到「追蹤狀況/更新備註」的最下方"
+                rows={3}
+              />
+              <div className="comment-actions">
+                <button type="button" className="comment-submit" onClick={() => submitComment(c)} disabled={commentSubmitting}>
+                  {commentSubmitting ? "送出中..." : "送出留言"}
+                </button>
+              </div>
+              {commentError && <div className="comment-error">{commentError}</div>}
+            </td>
+          </tr>
+        )}
+      </Fragment>
     );
   }
 

@@ -11,6 +11,14 @@ const PAGE_SIZE = 1000;
 
 export type SupaBoard = "t1ho" | "ho";
 
+export interface SupaComment {
+  id: string;
+  body: string; // legacy-migration prefix stripped
+  authorEmail: string;
+  createdAt: string;
+  editedAt: string | null;
+}
+
 export interface SupaCaseRow {
   id: string;
   board: SupaBoard;
@@ -28,7 +36,8 @@ export interface SupaCaseRow {
   priority: string;
   issueTag: string | null;
   updateDate: string;
-  latestNote: string; // most recent comment body, legacy-migration prefix stripped
+  comments: SupaComment[]; // oldest first
+  latestNote: string; // comments[comments.length-1]'s body, or "" — kept for the board summary preview cell
   isCompleted: boolean;
   isOverdue: boolean;
   daysOpen: number | null;
@@ -67,9 +76,12 @@ interface CaseDbRow {
 }
 
 interface CommentDbRow {
+  id: string;
   case_id: string;
+  author_id: string;
   body: string;
   created_at: string;
+  edited_at: string | null;
 }
 
 export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
@@ -121,23 +133,48 @@ export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[
     chunks.map((chunk) =>
       supabase
         .from("comments")
-        .select("case_id, body, created_at")
+        .select("id, case_id, author_id, body, created_at, edited_at")
+        // oldest first, so building each case's thread in array order needs
+        // no further sorting.
         .in("case_id", chunk)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
         .returns<CommentDbRow[]>()
     )
   );
-  const latestByCase = new Map<string, string>();
+  const commentRows: CommentDbRow[] = [];
   for (const { data, error } of commentPages) {
     if (error) throw new Error(`Supabase 讀取 comments 失敗: ${error.message}`);
-    for (const c of data ?? []) {
-      if (!latestByCase.has(c.case_id)) latestByCase.set(c.case_id, c.body.replace(LEGACY_PREFIX, ""));
-    }
+    commentRows.push(...(data ?? []));
+  }
+
+  const authorIds = Array.from(new Set(commentRows.map((c) => c.author_id)));
+  const authorEmailById = new Map<string, string>();
+  const AUTHOR_CHUNK = 300;
+  for (let i = 0; i < authorIds.length; i += AUTHOR_CHUNK) {
+    const chunk = authorIds.slice(i, i + AUTHOR_CHUNK);
+    if (chunk.length === 0) continue;
+    const { data, error } = await supabase.from("users").select("id, email").in("id", chunk).returns<{ id: string; email: string }[]>();
+    if (error) throw new Error(`Supabase 讀取 users 失敗: ${error.message}`);
+    for (const u of data ?? []) authorEmailById.set(u.id, u.email);
+  }
+
+  const commentsByCase = new Map<string, SupaComment[]>();
+  for (const c of commentRows) {
+    const list = commentsByCase.get(c.case_id) ?? [];
+    list.push({
+      id: c.id,
+      body: c.body.replace(LEGACY_PREFIX, ""),
+      authorEmail: authorEmailById.get(c.author_id) ?? "unknown",
+      createdAt: c.created_at,
+      editedAt: c.edited_at,
+    });
+    commentsByCase.set(c.case_id, list);
   }
 
   return caseRows.map((r) => {
     const daysOpen = daysSince(r.create_date);
     const completed = isCompleted(board, r.status);
+    const comments = commentsByCase.get(r.id) ?? [];
     return {
       id: r.id,
       board: r.board,
@@ -155,7 +192,8 @@ export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[
       priority: r.priority,
       issueTag: r.issue_tag,
       updateDate: r.update_date,
-      latestNote: latestByCase.get(r.id) ?? "",
+      comments,
+      latestNote: comments.length > 0 ? comments[comments.length - 1].body : "",
       isCompleted: completed,
       // Only flagging overdue for T1 HO for now — HO doesn't have a confirmed
       // staleness threshold yet, so we show days-open there without a red flag.
