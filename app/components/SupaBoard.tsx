@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
@@ -29,16 +29,13 @@ const STRINGS = {
   oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
   daysAgo: { zh: (n: number) => `${n}天前`, en: (n: number) => `${n}d ago` },
   overdueTag: { zh: "逾期", en: "Overdue" },
-  updateTrigger: { zh: "+更新", en: "+ Update" },
+  addUpdate: { zh: "+ 更新", en: "+ Update" },
   cancel: { zh: "取消", en: "Cancel" },
-  editedTag: { zh: "已編輯", en: "Edited" },
+  editedTag: { zh: "已編輯", en: "edited" },
   editComment: { zh: "編輯", en: "Edit" },
-  commentPlaceholder: {
-    zh: "輸入留言，會加到「追蹤狀況/更新備註」的最下方",
-    en: "Type your comment — it'll be added to the bottom of Tracking / Update notes",
-  },
+  commentPlaceholder: { zh: "輸入留言…", en: "Write a comment…" },
+  send: { zh: "送出", en: "Send" },
   submitting: { zh: "送出中...", en: "Submitting..." },
-  submitComment: { zh: "送出留言", en: "Submit comment" },
   commentRequired: { zh: "請輸入留言內容", en: "Please enter a comment" },
   commentFailed: { zh: "留言失敗", en: "Failed to submit" },
   saveFailed: { zh: "儲存失敗", en: "Failed to save" },
@@ -281,9 +278,15 @@ function CommentThread({
   onStartEdit,
   onCancelEdit,
   onSubmitEdit,
-  triggerOpen,
-  onToggleTrigger,
   lang,
+  formOpen,
+  onOpenForm,
+  onCloseForm,
+  commentDraft,
+  onCommentDraftChange,
+  commentSubmitting,
+  commentError,
+  onSubmitComment,
 }: {
   comments: SupaComment[];
   cellKey: string;
@@ -297,66 +300,100 @@ function CommentThread({
   onStartEdit: (id: string, message: string) => void;
   onCancelEdit: () => void;
   onSubmitEdit: (id: string) => void;
-  triggerOpen: boolean;
-  onToggleTrigger: () => void;
   lang: Lang;
+  formOpen: boolean;
+  onOpenForm: () => void;
+  onCloseForm: () => void;
+  commentDraft: string;
+  onCommentDraftChange: (v: string) => void;
+  commentSubmitting: boolean;
+  commentError: string | null;
+  onSubmitComment: () => void;
 }) {
-  const combinedText = comments.map((c) => c.body).join("\n\n");
-  const isLong = isVisuallyLong(combinedText);
   const isExpanded = expanded.has(cellKey);
+  // Mockup behavior (layoutCommentClamp): a collapsed thread shows only its
+  // first comment, and the show-more toggle appears whenever there's more
+  // than one — threads aren't clamped by pixel height the way plain text
+  // cells are, so a single long comment stays fully readable.
+  const visible = isExpanded ? comments : comments.slice(0, 1);
 
   return (
-    <td className="note-cell has-trigger">
+    <td className="comment-thread">
       {comments.length > 0 && (
-        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
-          {comments.map((c) => {
+        <div className="cell-clip">
+          {visible.map((c) => {
             const entryKey = `${cellKey}-${c.id}`;
             const isEditingThis = editingId === c.id;
             return (
-              <div key={entryKey} className="reply-entry">
+              <div key={entryKey} className="comment">
+                <span className="who">{displayNameFromEmail(c.authorEmail)}</span>{" "}
+                <span className="meta">{formatTimestampUTC8(c.createdAt)}</span>
+                {c.editedAt && <span className="edited-tag">{t(lang, "editedTag")}</span>}
+                {!isEditingThis && (
+                  <button type="button" className="comment-edit-btn" onClick={() => onStartEdit(c.id, c.body)}>
+                    {t(lang, "editComment")}
+                  </button>
+                )}
                 {isEditingThis ? (
-                  <>
-                    <textarea
-                      className="comment-textarea"
-                      value={editDraft}
-                      onChange={(e) => onEditDraftChange(e.target.value)}
-                      rows={3}
-                    />
-                    <div className="comment-actions">
-                      <button type="button" className="comment-submit" disabled={editSubmitting} onClick={() => onSubmitEdit(c.id)}>
+                  <div className="comment-edit-form">
+                    <textarea value={editDraft} onChange={(e) => onEditDraftChange(e.target.value)} />
+                    <div className="cef-btns">
+                      <button type="button" className="cef-save" disabled={editSubmitting} onClick={() => onSubmitEdit(c.id)}>
                         {editSubmitting ? t(lang, "saving") : t(lang, "save")}
                       </button>
-                      <button type="button" className="link-btn" onClick={onCancelEdit}>
+                      <button type="button" className="cef-cancel" onClick={onCancelEdit}>
                         {t(lang, "cancel")}
                       </button>
                     </div>
-                    {editError && <div className="comment-error">{editError}</div>}
-                  </>
+                  </div>
                 ) : (
                   <>
-                    <div>
-                      <strong>{formatTimestampUTC8(c.createdAt)}</strong> {displayNameFromEmail(c.authorEmail)}
-                      {c.editedAt && <span className="reply-support-tag">{t(lang, "editedTag")}</span>}
-                    </div>
-                    {linkify(c.body, entryKey)}
-                    <button type="button" className="note-toggle" onClick={() => onStartEdit(c.id, c.body)}>
-                      {t(lang, "editComment")}
-                    </button>
+                    <br />
+                    <span className="comment-text">{linkify(c.body, entryKey)}</span>
                   </>
                 )}
+                {isEditingThis && editError && <div className="comment-error">{editError}</div>}
               </div>
             );
           })}
         </div>
       )}
-      {isLong && comments.length > 0 && (
-        <button type="button" className="note-toggle" onClick={() => onToggleClamp(cellKey)}>
+      {comments.length > 1 && (
+        <button type="button" className="show-more-btn" onClick={() => onToggleClamp(cellKey)}>
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
-      <button type="button" className="comment-trigger" onClick={onToggleTrigger}>
-        {triggerOpen ? t(lang, "cancel") : t(lang, "updateTrigger")}
-      </button>
+      <div className={`add-comment${formOpen ? " open" : ""}`}>
+        {formOpen ? (
+          <div className="add-comment-form">
+            <textarea
+              rows={1}
+              autoFocus
+              placeholder={t(lang, "commentPlaceholder")}
+              value={commentDraft}
+              onChange={(e) => onCommentDraftChange(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter submits, Shift+Enter adds a newline, Escape closes —
+                // matching the mockup's wireCommentTextareaKeys.
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSubmitComment();
+                } else if (e.key === "Escape") {
+                  onCloseForm();
+                }
+              }}
+            />
+            {commentError && <div className="comment-error">{commentError}</div>}
+            <button type="button" className="send-comment-btn" disabled={commentSubmitting} onClick={onSubmitComment}>
+              {commentSubmitting ? t(lang, "submitting") : t(lang, "send")}
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="add-comment-btn" onClick={onOpenForm}>
+            {t(lang, "addUpdate")}
+          </button>
+        )}
+      </div>
     </td>
   );
 }
@@ -772,9 +809,15 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
             onStartEdit={startEdit}
             onCancelEdit={cancelEdit}
             onSubmitEdit={(commentId) => submitEdit(c.id, commentId)}
-            triggerOpen={openCommentKey === rowKey}
-            onToggleTrigger={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
             lang={lang}
+            formOpen={openCommentKey === rowKey}
+            onOpenForm={() => openComment(rowKey)}
+            onCloseForm={() => setOpenCommentKey(null)}
+            commentDraft={commentDraft}
+            onCommentDraftChange={setCommentDraft}
+            commentSubmitting={commentSubmitting}
+            commentError={commentError}
+            onSubmitComment={() => submitComment(c)}
           />
         );
       case "relatedTicket":
@@ -808,30 +851,9 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
   function renderRow(c: SupaCaseRow, key: string) {
     return (
-      <Fragment key={key}>
-        <tr className={c.isOverdue ? "overdue" : undefined}>
-          {columnOrder.map((colKey) => renderCell(colKey, c, key))}
-        </tr>
-        {openCommentKey === key && (
-          <tr>
-            <td colSpan={columnOrder.length} className="comment-row">
-              <textarea
-                className="comment-textarea"
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder={t(lang, "commentPlaceholder")}
-                rows={3}
-              />
-              <div className="comment-actions">
-                <button type="button" className="comment-submit" onClick={() => submitComment(c)} disabled={commentSubmitting}>
-                  {commentSubmitting ? t(lang, "submitting") : t(lang, "submitComment")}
-                </button>
-              </div>
-              {commentError && <div className="comment-error">{commentError}</div>}
-            </td>
-          </tr>
-        )}
-      </Fragment>
+      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
+        {columnOrder.map((colKey) => renderCell(colKey, c, key))}
+      </tr>
     );
   }
 

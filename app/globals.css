@@ -1114,98 +1114,227 @@ tr.overdue td {
   font-size: 0.8rem;
 }
 
-.comment-trigger {
-  display: block;
-  margin-top: 6px;
+/* ---------- comment thread (追蹤狀況/更新備註 column) ----------
+   Structure and behavior follow the board mockup: each entry is a .comment
+   with a bold author, a muted timestamp and an inline edit form; the write
+   form lives inside the same cell (pinned top-right while closed, expanding
+   in place when opened) rather than in a separate full-width row. */
+.comment-thread {
+  position: relative;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.comment-thread .cell-clip > *:first-child {
+  padding-right: 58px;
+}
+
+.comment {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.comment:last-child {
+  margin-bottom: 0;
+}
+
+.comment .who {
+  font-weight: 650;
+  color: var(--text);
+}
+
+.comment .meta {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.comment-text {
+  white-space: pre-wrap;
+}
+
+.comment-edit-btn {
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
   background: none;
   border: none;
   padding: 0;
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+.comment-edit-btn:hover {
   color: var(--accent);
-  font-size: 0.75rem;
+  text-decoration: underline;
+}
+
+.comment-edit-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.comment-edit-form textarea {
+  flex: 1;
+  min-width: 130px;
+  font-family: inherit;
+  font-size: 0.76rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  resize: vertical;
+  min-height: 32px;
+}
+
+.comment-edit-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.comment-edit-form .cef-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comment-edit-form .cef-btns button {
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 650;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: none;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.comment-trigger:hover {
-  text-decoration: underline;
+.comment-edit-form .cef-save {
+  background: var(--accent);
+  color: #fff;
 }
 
-/* pin the "+ update" trigger to the top-right of the reply cell, in line
-   with the first row of content, so an empty thread doesn't need its own
-   extra line */
-.note-cell.has-trigger {
-  position: relative;
-  padding-right: 54px;
+.comment-edit-form .cef-save:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
-.note-cell.has-trigger .comment-trigger {
+.comment-edit-form .cef-cancel {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.edited-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: 6px;
+}
+
+/* The write form: the trigger sits pinned to the cell's top-right so an
+   empty thread costs no extra line, and drops back into normal flow once
+   the form is open. */
+.add-comment {
   position: absolute;
   top: 10px;
-  right: 10px;
+  right: 13px;
   margin-top: 0;
 }
 
-.comment-row {
-  background: var(--bg);
+.add-comment.open {
+  position: static;
+  right: auto;
+  margin-top: 6px;
 }
 
-.comment-textarea {
-  width: 100%;
-  max-width: 640px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.85rem;
+.add-comment-btn {
   font-family: inherit;
-  resize: vertical;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.comment-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+.add-comment-btn:hover {
+  text-decoration: underline;
 }
 
-.comment-status-choice {
+.add-comment-form {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  margin-top: 5px;
+  align-items: flex-end;
 }
 
-.comment-status-choice select {
-  background: var(--surface);
-  border: 1px solid var(--border);
+.add-comment-form textarea {
+  width: 100%;
+  min-height: 30px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.76rem;
   color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 8px;
-  font-size: 0.85rem;
 }
 
-.comment-submit {
-  border: 1px solid var(--accent);
+.add-comment-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.send-comment-btn {
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: #fff;
   background: var(--accent);
-  color: white;
-  border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 0.85rem;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 11px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.comment-submit:disabled {
+.send-comment-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.show-more-btn {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.show-more-btn:hover {
+  text-decoration: underline;
 }
 
 .comment-error {
   margin-top: 6px;
   color: var(--overdue);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  align-self: flex-start;
 }
 
 .toolbar {

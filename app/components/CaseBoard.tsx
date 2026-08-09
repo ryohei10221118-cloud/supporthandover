@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -72,27 +71,19 @@ const STRINGS = {
   oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
   daysAgo: { zh: (n: number) => `${n}天前`, en: (n: number) => `${n}d ago` },
   overdueTag: { zh: "逾期", en: "Overdue" },
-  comment: { zh: "💬 留言", en: "💬 Comment" },
+  addUpdate: { zh: "+ 更新", en: "+ Update" },
   cancel: { zh: "取消", en: "Cancel" },
-  commentPlaceholder: {
-    zh: "輸入留言，會加到「回答內容」欄位最下方",
-    en: "Type your comment — it'll be added to the bottom of 回答內容",
-  },
-  alsoUpdateStatus: { zh: "同時更新狀態：", en: "Also update status:" },
-  noChange: { zh: "不變更", en: "No change" },
+  commentPlaceholder: { zh: "輸入留言…", en: "Write a comment…" },
+  send: { zh: "送出", en: "Send" },
+  editComment: { zh: "編輯", en: "Edit" },
+  editedTag: { zh: "已編輯", en: "edited" },
   submitting: { zh: "送出中...", en: "Submitting..." },
-  submitComment: { zh: "送出留言", en: "Submit comment" },
   commentRequired: { zh: "請輸入留言內容", en: "Please enter a comment" },
   submitFailed: { zh: "送出失敗", en: "Failed to submit" },
-  statusUpdateFailedAfterComment: {
-    zh: (err: string) => `留言已送出，但狀態更新失敗：${err}`,
-    en: (err: string) => `Comment submitted, but the status update failed: ${err}`,
-  },
   saving: { zh: "儲存中...", en: "Saving..." },
   save: { zh: "儲存", en: "Save" },
   editContentRequired: { zh: "請輸入內容", en: "Please enter some content" },
   updateFailed: { zh: "更新失敗", en: "Update failed" },
-  edit: { zh: "✎ 編輯", en: "✎ Edit" },
   showMore: { zh: "⋯ 顯示更多", en: "⋯ Show more" },
   showLess: { zh: "▲ 收合", en: "▲ Show less" },
   changeStatus: { zh: "變更狀態", en: "Change status" },
@@ -310,22 +301,40 @@ function ClampedCell({
 // app/api/cases/comment/edit/route.ts for the matching server-side rule.
 const OWN_ENTRY_RE = /^(\d{2}\/\d{2} \d{2}:\d{2}) ([^\n:]+)\n([\s\S]*)$/;
 
+const EDITED_SUFFIX_RE = /\n\(已編輯(?: by [^\n]+)? \d{2}\/\d{2} \d{2}:\d{2}\)\s*$/;
+
 function parseEditableEntry(entry: string): { message: string } | null {
   const m = entry.match(OWN_ENTRY_RE);
   if (!m) return null;
   const [, , , rest] = m;
   // Editing replaces the whole message anyway, but don't show a stale
   // "(已編輯 ...)" tag from a previous edit inside the textarea.
-  const message = rest.replace(/\n\(已編輯(?: by [^\n]+)? \d{2}\/\d{2} \d{2}:\d{2}\)\s*$/, "");
-  return { message };
+  return { message: rest.replace(EDITED_SUFFIX_RE, "") };
 }
 
-// An entry with no "MM/DD HH:MM name" header wasn't written through this
-// tool (by anyone) — it's something typed straight into the sheet, so it
-// carries no author info of its own. Label those "Support" in the UI only;
-// nothing about the sheet content itself changes.
-function hasOwnFormatHeader(entry: string): boolean {
-  return OWN_ENTRY_RE.test(entry);
+// Splits one reply entry into the pieces the mockup's .comment markup shows
+// separately: a bold author, a muted timestamp, the message body, and an
+// "edited" marker. An entry with no "MM/DD HH:MM name" header wasn't written
+// through this tool (by anyone) — it's something typed straight into the
+// sheet, so it carries no author info of its own; those are labelled
+// "Support" in the UI only, nothing about the sheet content itself changes.
+function parseEntryForDisplay(entry: string): {
+  who: string;
+  meta: string;
+  message: string;
+  editable: boolean;
+  edited: boolean;
+} {
+  const m = entry.match(OWN_ENTRY_RE);
+  if (!m) return { who: "Support", meta: "", message: entry, editable: false, edited: false };
+  const [, meta, who, rest] = m;
+  return {
+    who,
+    meta,
+    message: rest.replace(EDITED_SUFFIX_RE, ""),
+    editable: true,
+    edited: EDITED_SUFFIX_RE.test(rest),
+  };
 }
 
 function ReplyCell({
@@ -344,8 +353,14 @@ function ReplyCell({
   onSubmitEdit,
   lang,
   canComment,
-  triggerOpen,
-  onToggleTrigger,
+  formOpen,
+  onOpenForm,
+  onCloseForm,
+  commentDraft,
+  onCommentDraftChange,
+  commentSubmitting,
+  commentError,
+  onSubmitComment,
 }: {
   reply: string;
   cellKey: string;
@@ -362,76 +377,113 @@ function ReplyCell({
   onSubmitEdit: (originalEntry: string) => void;
   lang: Lang;
   canComment: boolean;
-  triggerOpen: boolean;
-  onToggleTrigger: () => void;
+  formOpen: boolean;
+  onOpenForm: () => void;
+  onCloseForm: () => void;
+  commentDraft: string;
+  onCommentDraftChange: (v: string) => void;
+  commentSubmitting: boolean;
+  commentError: string | null;
+  onSubmitComment: () => void;
 }) {
   const entries = reply.trim() ? reply.split(/\n\n+/) : [];
-  const isLong = isVisuallyLong(reply);
   const isExpanded = expanded.has(cellKey);
+  // Mockup behavior (layoutCommentClamp): a collapsed thread shows only its
+  // first entry, and the show-more toggle appears whenever there's more than
+  // one — the thread isn't clamped by pixel height the way plain text cells
+  // are, so a long single comment stays fully readable.
+  const visibleEntries = isExpanded ? entries : entries.slice(0, 1);
 
   return (
-    <td className={`note-cell${canComment ? " has-trigger" : ""}`}>
+    <td className="comment-thread">
       {entries.length > 0 && (
-        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
-          {entries.map((entry, i) => {
+        <div className="cell-clip">
+          {visibleEntries.map((entry, i) => {
             const entryKey = `${cellKey}-${i}`;
-            const editable = myName ? parseEditableEntry(entry) : null;
+            const parsed = parseEntryForDisplay(entry);
+            const canEditThis = !!myName && parsed.editable;
             const isEditingThis = editingKey === entryKey;
 
             return (
-              <div key={entryKey} className="reply-entry">
-                {isEditingThis ? (
+              <div key={entryKey} className="comment">
+                {parsed.meta ? (
                   <>
-                    <textarea
-                      className="comment-textarea"
-                      value={editDraft}
-                      onChange={(e) => onEditDraftChange(e.target.value)}
-                      rows={3}
-                    />
-                    <div className="comment-actions">
-                      <button
-                        type="button"
-                        className="comment-submit"
-                        disabled={editSubmitting}
-                        onClick={() => onSubmitEdit(entry)}
-                      >
+                    <span className="who">{parsed.who}</span> <span className="meta">{parsed.meta}</span>
+                  </>
+                ) : (
+                  <span className="reply-support-tag">{parsed.who}</span>
+                )}
+                {parsed.edited && <span className="edited-tag">{t(lang, "editedTag")}</span>}
+                {canEditThis && !isEditingThis && (
+                  <button
+                    type="button"
+                    className="comment-edit-btn"
+                    onClick={() => onStartEdit(entryKey, parsed.message)}
+                  >
+                    {t(lang, "editComment")}
+                  </button>
+                )}
+                {isEditingThis ? (
+                  <div className="comment-edit-form">
+                    <textarea value={editDraft} onChange={(e) => onEditDraftChange(e.target.value)} />
+                    <div className="cef-btns">
+                      <button type="button" className="cef-save" disabled={editSubmitting} onClick={() => onSubmitEdit(entry)}>
                         {editSubmitting ? t(lang, "saving") : t(lang, "save")}
                       </button>
-                      <button type="button" className="link-btn" onClick={onCancelEdit}>
+                      <button type="button" className="cef-cancel" onClick={onCancelEdit}>
                         {t(lang, "cancel")}
                       </button>
                     </div>
-                    {editError && <div className="comment-error">{editError}</div>}
-                  </>
+                  </div>
                 ) : (
                   <>
-                    {!hasOwnFormatHeader(entry) && <span className="reply-support-tag">Support</span>}
-                    {linkify(entry, entryKey)}
-                    {editable && (
-                      <button
-                        type="button"
-                        className="note-toggle"
-                        onClick={() => onStartEdit(entryKey, editable.message)}
-                      >
-                        {t(lang, "edit")}
-                      </button>
-                    )}
+                    <br />
+                    <span className="comment-text">{linkify(parsed.message, entryKey)}</span>
                   </>
                 )}
+                {isEditingThis && editError && <div className="comment-error">{editError}</div>}
               </div>
             );
           })}
         </div>
       )}
-      {isLong && entries.length > 0 && (
-        <button type="button" className="note-toggle" onClick={() => onToggleClamp(cellKey)}>
+      {entries.length > 1 && (
+        <button type="button" className="show-more-btn" onClick={() => onToggleClamp(cellKey)}>
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
       {canComment && (
-        <button type="button" className="comment-trigger" onClick={onToggleTrigger}>
-          {triggerOpen ? t(lang, "cancel") : t(lang, "comment")}
-        </button>
+        <div className={`add-comment${formOpen ? " open" : ""}`}>
+          {formOpen ? (
+            <div className="add-comment-form">
+              <textarea
+                rows={1}
+                autoFocus
+                placeholder={t(lang, "commentPlaceholder")}
+                value={commentDraft}
+                onChange={(e) => onCommentDraftChange(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter submits, Shift+Enter adds a newline, Escape closes —
+                  // matching the mockup's wireCommentTextareaKeys.
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    onSubmitComment();
+                  } else if (e.key === "Escape") {
+                    onCloseForm();
+                  }
+                }}
+              />
+              {commentError && <div className="comment-error">{commentError}</div>}
+              <button type="button" className="send-comment-btn" disabled={commentSubmitting} onClick={onSubmitComment}>
+                {commentSubmitting ? t(lang, "submitting") : t(lang, "send")}
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="add-comment-btn" onClick={onOpenForm}>
+              {t(lang, "addUpdate")}
+            </button>
+          )}
+        </div>
       )}
     </td>
   );
@@ -912,17 +964,18 @@ export default function CaseBoard({
     window.location.href = "/login";
   }
 
-  // --- Comment / status write panel ---
+  // --- Comment write panel ---
+  // Status isn't part of this form (the mockup's isn't either) — the status
+  // badge in its own column is already a click-to-change dropdown, so the
+  // old "同時更新狀態" select here was a second way to do the same thing.
   const [openCommentKey, setOpenCommentKey] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentStatusChoice, setCommentStatusChoice] = useState<"" | (typeof WRITABLE_STATUSES)[number]>("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
   function openComment(key: string) {
     setOpenCommentKey(key);
     setCommentDraft("");
-    setCommentStatusChoice("");
     setCommentError(null);
   }
 
@@ -944,21 +997,6 @@ export default function CaseBoard({
         setCommentError(data.error || t(lang, "submitFailed"));
         return;
       }
-
-      if (commentStatusChoice) {
-        const statusRes = await fetch("/api/cases/status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rowIndex: c.rowIndex, status: commentStatusChoice }),
-        });
-        if (!statusRes.ok) {
-          const statusData = await statusRes.json().catch(() => ({}));
-          setCommentError(t(lang, "statusUpdateFailedAfterComment", statusData.error || ""));
-          await refresh();
-          return;
-        }
-      }
-
       setOpenCommentKey(null);
       await refresh();
     } finally {
@@ -1088,8 +1126,14 @@ export default function CaseBoard({
             onSubmitEdit={(entry) => submitEdit(c, entry)}
             lang={lang}
             canComment={!!me}
-            triggerOpen={openCommentKey === rowKey}
-            onToggleTrigger={() => (openCommentKey === rowKey ? setOpenCommentKey(null) : openComment(rowKey))}
+            formOpen={openCommentKey === rowKey}
+            onOpenForm={() => openComment(rowKey)}
+            onCloseForm={() => setOpenCommentKey(null)}
+            commentDraft={commentDraft}
+            onCommentDraftChange={setCommentDraft}
+            commentSubmitting={commentSubmitting}
+            commentError={commentError}
+            onSubmitComment={() => submitComment(c)}
           />
         );
       case "status": {
@@ -1117,51 +1161,9 @@ export default function CaseBoard({
 
   function renderRow(c: CaseRow, key: string) {
     return (
-      <Fragment key={key}>
-        <tr className={c.isOverdue ? "overdue" : undefined}>
-          {columnOrder.map((colKey) => renderCell(colKey, c, key))}
-        </tr>
-        {openCommentKey === key && (
-          <tr>
-            <td colSpan={columnOrder.length} className="comment-row">
-              <textarea
-                className="comment-textarea"
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder={t(lang, "commentPlaceholder")}
-                rows={3}
-              />
-              <div className="comment-actions">
-                <label className="comment-status-choice">
-                  {t(lang, "alsoUpdateStatus")}
-                  <select
-                    value={commentStatusChoice}
-                    onChange={(e) =>
-                      setCommentStatusChoice(e.target.value as "" | (typeof WRITABLE_STATUSES)[number])
-                    }
-                  >
-                    <option value="">{t(lang, "noChange")}</option>
-                    {WRITABLE_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="comment-submit"
-                  onClick={() => submitComment(c)}
-                  disabled={commentSubmitting}
-                >
-                  {commentSubmitting ? t(lang, "submitting") : t(lang, "submitComment")}
-                </button>
-              </div>
-              {commentError && <div className="comment-error">{commentError}</div>}
-            </td>
-          </tr>
-        )}
-      </Fragment>
+      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
+        {columnOrder.map((colKey) => renderCell(colKey, c, key))}
+      </tr>
     );
   }
 
