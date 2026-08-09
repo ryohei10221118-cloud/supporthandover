@@ -100,6 +100,12 @@ export function applyTheme(state: ThemeState) {
   root.style.setProperty("--border", state.mode === "light" ? "#e2e5ea" : "#2c303a");
   root.style.setProperty("--overdue", state.mode === "light" ? "#dc2626" : "#f87171");
   root.style.setProperty("--overdue-bg", state.mode === "light" ? "#fef2f2" : "#3a1d1d");
+  // The sidebar is always a dark chrome, independent of the picked shade —
+  // just a slightly darker variant in dark mode, matching the design mockup.
+  root.style.setProperty("--sidebar", state.mode === "light" ? "#211417" : "#0f0b0c");
+  root.style.setProperty("--sidebar-text", "#ece1e2");
+  root.style.setProperty("--sidebar-text-muted", state.mode === "light" ? "#b09a9c" : "#8c797b");
+  root.style.setProperty("--sidebar-active", state.mode === "light" ? "#332124" : "#24181a");
   root.dataset.theme = state.mode;
 }
 

@@ -11,17 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import type { CaseRow } from "@/lib/types";
-import {
-  LIGHT_SHADES,
-  DARK_SHADES,
-  DEFAULT_SHADE_INDEX,
-  ACCENT_FAMILIES,
-  DEFAULT_ACCENT_KEY,
-  THEME_STORAGE_KEY,
-  isThemeState,
-  applyTheme,
-  type ThemeState,
-} from "@/lib/theme";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
 
@@ -582,133 +571,10 @@ function StatusMenu({
   );
 }
 
-// --- Light/dark mode + accent color picker ---
-// Shared with the login page and the pre-hydration script in app/layout.tsx
-// (that one can't import this module, so it's kept in sync by hand there —
-// see the comment on THEME_INIT_SCRIPT).
-
-function SunIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
-    </svg>
-  );
-}
-
-function ThemePicker({ lang }: { lang: Lang }) {
-  const [state, setState] = useState<ThemeState | null>(null);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let initial: ThemeState;
-    try {
-      const raw = localStorage.getItem(THEME_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : null;
-      initial = isThemeState(parsed)
-        ? parsed
-        : {
-            mode: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-            shadeIndex: DEFAULT_SHADE_INDEX,
-            accentKey: DEFAULT_ACCENT_KEY,
-          };
-    } catch {
-      initial = { mode: "light", shadeIndex: DEFAULT_SHADE_INDEX, accentKey: DEFAULT_ACCENT_KEY };
-    }
-    setState(initial);
-    applyTheme(initial);
-  }, []);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  function update(patch: Partial<ThemeState>) {
-    setState((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, ...patch };
-      applyTheme(next);
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore write failures (private browsing, storage full, etc.)
-      }
-      return next;
-    });
-  }
-
-  if (!state) return null;
-
-  const shades = state.mode === "light" ? LIGHT_SHADES : DARK_SHADES;
-  const currentAccent = ACCENT_FAMILIES.find((a) => a.key === state.accentKey) ?? ACCENT_FAMILIES[6];
-
-  return (
-    <div className="theme-picker" ref={rootRef}>
-      <button
-        type="button"
-        className="theme-toggle-btn"
-        onClick={() => update({ mode: state.mode === "light" ? "dark" : "light" })}
-        aria-label={t(lang, "toggleTheme")}
-        title={t(lang, "toggleTheme")}
-      >
-        {state.mode === "light" ? <SunIcon /> : <MoonIcon />}
-      </button>
-      <button
-        type="button"
-        className="theme-swatch-btn"
-        style={{ background: currentAccent[state.mode] }}
-        onClick={() => setOpen((o) => !o)}
-        aria-label={t(lang, "adjustColor")}
-        title={t(lang, "adjustColor")}
-      />
-      {open && (
-        <div className="theme-menu">
-          <div className="theme-menu-label">{t(lang, "grayscale")}</div>
-          <div className="theme-shade-row">
-            {shades.map((shade, i) => (
-              <button
-                key={shade.key}
-                type="button"
-                className={`theme-shade-chip${state.shadeIndex === i ? " selected" : ""}`}
-                onClick={() => update({ shadeIndex: i })}
-              >
-                <span className="theme-shade-swatch" style={{ background: shade.bg }} />
-                {shade.label[lang]}
-              </button>
-            ))}
-          </div>
-          <div className="theme-menu-label">{t(lang, "accentColor")}</div>
-          <div className="theme-accent-row">
-            {ACCENT_FAMILIES.map((a) => (
-              <button
-                key={a.key}
-                type="button"
-                className={`theme-accent-swatch${state.accentKey === a.key ? " selected" : ""}`}
-                style={{ background: a[state.mode] }}
-                onClick={() => update({ accentKey: a.key })}
-                aria-label={a.key}
-                title={a.key}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// Light/dark mode + accent color picker now lives in app/components/ThemePicker.tsx
+// (shared with the sidebar) — lib/theme.ts holds the underlying data/logic, also used
+// by the login page and the pre-hydration script in app/layout.tsx (that one can't
+// import either module, so it's kept in sync by hand there — see THEME_INIT_SCRIPT).
 
 export default function CaseBoard({
   initialCases,
@@ -1380,57 +1246,6 @@ export default function CaseBoard({
           <button type="button" className="refresh-btn" onClick={refresh} disabled={loading}>
             {loading ? t(lang, "refreshing") : t(lang, "refresh")}
           </button>
-          <button type="button" className="lang-toggle-btn" onClick={toggleLang}>
-            {t(lang, "toggleLang")}
-          </button>
-          <ThemePicker lang={lang} />
-        {authChecked && (
-          <>
-            {me ? (
-              <>
-                <span>{t(lang, "loggedInAs", me.name)}</span>
-                <button type="button" className="link-btn" onClick={logout}>
-                  {t(lang, "logout")}
-                </button>
-              </>
-            ) : authStage === "email" ? (
-              <>
-                <input
-                  type="email"
-                  list="saved-emails"
-                  placeholder={t(lang, "emailPlaceholder")}
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                />
-                <datalist id="saved-emails">
-                  {savedEmails.map((e) => (
-                    <option key={e} value={e} />
-                  ))}
-                </datalist>
-                <button type="button" onClick={requestAuthCode} disabled={authLoading || !authEmail}>
-                  {authLoading ? t(lang, "sending") : t(lang, "getCode")}
-                </button>
-              </>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  className="code-input"
-                  placeholder={t(lang, "codePlaceholder")}
-                  value={authCode}
-                  onChange={(e) => setAuthCode(e.target.value)}
-                />
-                <button type="button" onClick={verifyAuthCode} disabled={authLoading || !authCode}>
-                  {authLoading ? t(lang, "verifying") : t(lang, "verify")}
-                </button>
-                <button type="button" className="link-btn" onClick={() => setAuthStage("email")}>
-                  {t(lang, "reenterEmail")}
-                </button>
-              </>
-            )}
-            {authError && <span className="login-error">{authError}</span>}
-          </>
-        )}
         </div>
       </div>
 

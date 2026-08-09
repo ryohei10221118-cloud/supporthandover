@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import SiteNav from "./components/SiteNav";
+import Sidebar from "./components/Sidebar";
 
 export const metadata: Metadata = {
   title: "T1HO case board",
@@ -68,6 +68,10 @@ const THEME_INIT_SCRIPT = `(function () {
     root.style.setProperty("--border", mode === "light" ? "#e2e5ea" : "#2c303a");
     root.style.setProperty("--overdue", mode === "light" ? "#dc2626" : "#f87171");
     root.style.setProperty("--overdue-bg", mode === "light" ? "#fef2f2" : "#3a1d1d");
+    root.style.setProperty("--sidebar", mode === "light" ? "#211417" : "#0f0b0c");
+    root.style.setProperty("--sidebar-text", "#ece1e2");
+    root.style.setProperty("--sidebar-text-muted", mode === "light" ? "#b09a9c" : "#8c797b");
+    root.style.setProperty("--sidebar-active", mode === "light" ? "#332124" : "#24181a");
     root.dataset.theme = mode;
   } catch (e) {}
 })();`;
@@ -81,8 +85,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-Hant" suppressHydrationWarning>
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        <SiteNav />
-        {children}
+        <div className="app">
+          <Sidebar />
+          <div className="app-content">{children}</div>
+        </div>
       </body>
     </html>
   );
