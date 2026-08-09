@@ -73,6 +73,7 @@ const STRINGS = {
   endDate: { zh: "結束日期", en: "End date" },
   dateTo: { zh: "至", en: "to" },
   clear: { zh: "清除", en: "Clear" },
+  clearAllFilters: { zh: "清除篩選", en: "Clear filters" },
   searchPlaceholder: { zh: "搜尋序列 / OP / CS / 內容...", en: "Search seq / OP / CS / content..." },
   resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
   newestFirst: { zh: "↓新到舊", en: "↓Newest" },
@@ -138,9 +139,9 @@ function isValidDept(dept: string): boolean {
   return (OFFICIAL_DEPARTMENTS as readonly string[]).includes(dept);
 }
 
-type ColumnKey = "seq" | "date" | "department" | "cs" | "op" | "note" | "reply" | "status";
+type ColumnKey = "seq" | "date" | "department" | "cs" | "op" | "note" | "reply" | "status" | "issue";
 
-const DEFAULT_COLUMN_ORDER: ColumnKey[] = ["seq", "date", "department", "cs", "op", "note", "reply", "status"];
+const DEFAULT_COLUMN_ORDER: ColumnKey[] = ["seq", "date", "department", "cs", "op", "note", "reply", "status", "issue"];
 
 const COLUMN_LABELS: Record<ColumnKey, Record<Lang, string>> = {
   seq: { zh: "序列", en: "Seq" },
@@ -151,6 +152,7 @@ const COLUMN_LABELS: Record<ColumnKey, Record<Lang, string>> = {
   note: { zh: "內容", en: "Note" },
   reply: { zh: "回答內容", en: "Reply" },
   status: { zh: "狀態", en: "Status" },
+  issue: { zh: "Issue Tag", en: "Issue Tag" },
 };
 
 const COLUMN_ORDER_STORAGE_KEY = "t1ho_column_order";
@@ -172,6 +174,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   note: 280,
   reply: 280,
   status: 150,
+  issue: 120,
 };
 const MIN_COLUMN_WIDTH = 60;
 const COLUMN_WIDTHS_STORAGE_KEY = "t1ho_column_widths";
@@ -1105,6 +1108,8 @@ export default function CaseBoard({
           </td>
         );
       }
+      case "issue":
+        return <td key={colKey}>{c.issue ? <span className="badge status-other">{c.issue}</span> : null}</td>;
     }
   }
 
@@ -1355,6 +1360,22 @@ export default function CaseBoard({
             />
             <span className="result-count">{t(lang, "resultCount", filteredValidCount)}</span>
           </div>
+          {(selectedDepartments.length > 0 || selectedStatuses.length > 0 || dateFrom || dateTo || search) && (
+            <button
+              type="button"
+              className="refresh-btn"
+              onClick={() => {
+                setSelectedDepartments([]);
+                setSelectedStatuses([]);
+                setDateFrom("");
+                setDateTo("");
+                setDatePreset("all");
+                setSearch("");
+              }}
+            >
+              {t(lang, "clearAllFilters")}
+            </button>
+          )}
         </div>
       </div>
 
