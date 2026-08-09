@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSessionRole } from "@/lib/permissionsServer";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +13,12 @@ const FIELDS = {
 } as const;
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
-  const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
-  if (!session) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  }
+  if (!role.permissions["edit.link"]) {
+    return NextResponse.json({ error: "你的權限無法修改這個欄位" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

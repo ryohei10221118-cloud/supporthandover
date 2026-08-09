@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
-import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
 import NewCaseModal from "./NewCaseModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
 import OptionBadge, { type BadgeOption } from "./OptionBadge";
 import { FIELD_LIST_KEY, type OptionLists } from "@/lib/optionLists";
+import { FIELD_PERMISSION, noPermissions, type Permissions } from "@/lib/permissions";
 
 // --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
@@ -358,6 +359,7 @@ function CommentThread({
   commentSubmitting,
   commentError,
   onSubmitComment,
+  canComment,
 }: {
   comments: SupaComment[];
   cellKey: string;
@@ -380,6 +382,7 @@ function CommentThread({
   commentSubmitting: boolean;
   commentError: string | null;
   onSubmitComment: () => void;
+  canComment: boolean;
 }) {
   const isExpanded = expanded.has(cellKey);
   // Collapsed threads show only the first comment (the mockup's
@@ -401,7 +404,7 @@ function CommentThread({
                 <span className="who">{displayNameFromEmail(c.authorEmail)}</span>{" "}
                 <span className="meta">{formatTimestampUTC8(c.createdAt)}</span>
                 {c.editedAt && <span className="edited-tag">{t(lang, "editedTag")}</span>}
-                {!isEditingThis && (
+                {!isEditingThis && canComment && (
                   <button type="button" className="comment-edit-btn" onClick={() => onStartEdit(c.id, c.body)}>
                     {t(lang, "editComment")}
                   </button>
@@ -435,6 +438,7 @@ function CommentThread({
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
+      {canComment && (
       <div className={`add-comment${formOpen ? " open" : ""}`}>
         {formOpen ? (
           <div className="add-comment-form">
@@ -466,6 +470,7 @@ function CommentThread({
           </button>
         )}
       </div>
+      )}
     </td>
   );
 }
@@ -480,7 +485,7 @@ function LinkCell({
 }: {
   label: string | null;
   url: string | null;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   const text = (label ?? "").trim();
   return (
@@ -498,9 +503,11 @@ function LinkCell({
           <span style={{ color: "var(--text-muted)" }}>—</span>
         )}
       </span>
-      <button type="button" className="link-edit-btn" onClick={onEdit} aria-label="edit">
-        ✎
-      </button>
+      {onEdit && (
+        <button type="button" className="link-edit-btn" onClick={onEdit} aria-label="edit">
+          ✎
+        </button>
+      )}
     </td>
   );
 }
@@ -643,16 +650,38 @@ export default function SupaBoard({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openCommentKey]);
 
-  // --- New case modal ---
+  // --- Signed-in user and what they're allowed to change ---
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [me, setMe] = useState<string>("");
+  const [permissions, setPermissions] = useState<Permissions>(noPermissions());
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => setMe(d.name ?? ""))
+      .then((d) => {
+        setMe(d.name ?? "");
+        if (d.permissions) setPermissions(d.permissions as Permissions);
+      })
       .catch(() => {});
   }, []);
+
+  // Admins can preview the board as another role. This only changes what
+  // this browser shows — the server still decides what it will accept.
+  const [previewPerms, setPreviewPerms] = useState<Permissions | null>(null);
+  useEffect(() => {
+    function handlePreview(e: Event) {
+      setPreviewPerms((e as CustomEvent<Permissions | null>).detail);
+    }
+    window.addEventListener(ROLE_PREVIEW_EVENT, handlePreview);
+    return () => window.removeEventListener(ROLE_PREVIEW_EVENT, handlePreview);
+  }, []);
+
+  const perms = previewPerms ?? permissions;
+  const canEditField = (field: string) => {
+    const needed = FIELD_PERMISSION[field];
+    return !!needed && perms[needed];
+  };
+  const canComment = perms[board === "t1ho" ? "comment.t1ho" : "comment.ho"];
 
   // --- Categorical cells (click-to-change option badges) ---
   const [fieldSaving, setFieldSaving] = useState<string | null>(null);
@@ -1017,7 +1046,7 @@ export default function SupaBoard({
               value={board === "t1ho" ? c.dept : c.hoType}
               options={badgeOptions(board === "t1ho" ? "dept" : "type")}
               chip
-              canEdit
+              canEdit={canEditField(board === "t1ho" ? "dept" : "type")}
               isSubmitting={fieldSaving === `${c.id}-${board === "t1ho" ? "dept" : "type"}`}
               onChange={(next) => saveField(c, board === "t1ho" ? "dept" : "type", next)}
             />
@@ -1030,7 +1059,7 @@ export default function SupaBoard({
               value={c.hoClass}
               options={badgeOptions("class")}
               chip
-              canEdit
+              canEdit={canEditField("class")}
               isSubmitting={fieldSaving === `${c.id}-class`}
               onChange={(next) => saveField(c, "class", next)}
             />
@@ -1045,7 +1074,7 @@ export default function SupaBoard({
             expanded={expandedNotes}
             onToggle={toggleNote}
             lang={lang}
-            onSave={(next) => saveField(c, "cs", next)}
+            onSave={canEditField("cs") ? (next) => saveField(c, "cs", next) : undefined}
             saving={fieldSaving === `${c.id}-cs`}
           />
         );
@@ -1058,7 +1087,7 @@ export default function SupaBoard({
             expanded={expandedNotes}
             onToggle={toggleNote}
             lang={lang}
-            onSave={(next) => saveField(c, "op", next)}
+            onSave={canEditField("op") ? (next) => saveField(c, "op", next) : undefined}
             saving={fieldSaving === `${c.id}-op`}
           />
         );
@@ -1071,7 +1100,7 @@ export default function SupaBoard({
             expanded={expandedNotes}
             onToggle={toggleNote}
             lang={lang}
-            onSave={(next) => saveField(c, "content", next)}
+            onSave={canEditField("content") ? (next) => saveField(c, "content", next) : undefined}
             saving={fieldSaving === `${c.id}-content`}
           />
         );
@@ -1093,6 +1122,7 @@ export default function SupaBoard({
             onSubmitEdit={(commentId) => submitEdit(c.id, commentId)}
             lang={lang}
             formOpen={openCommentKey === rowKey}
+            canComment={canComment}
             onOpenForm={() => openComment(rowKey)}
             onCloseForm={() => setOpenCommentKey(null)}
             commentDraft={commentDraft}
@@ -1108,14 +1138,14 @@ export default function SupaBoard({
             key={colKey}
             label={c.relatedTicketLabel}
             url={c.relatedTicketUrl}
-            onEdit={() => openLinkEditor(c, "ticket")}
+            onEdit={perms["edit.link"] ? () => openLinkEditor(c, "ticket") : undefined}
           />
         );
       case "updateDate":
         return <td key={colKey}>{c.updateDate}</td>;
       case "noteLabel":
         return (
-          <LinkCell key={colKey} label={c.noteLabel} url={c.noteUrl} onEdit={() => openLinkEditor(c, "note")} />
+          <LinkCell key={colKey} label={c.noteLabel} url={c.noteUrl} onEdit={perms["edit.link"] ? () => openLinkEditor(c, "note") : undefined} />
         );
       case "status":
         return (
@@ -1123,7 +1153,7 @@ export default function SupaBoard({
             <OptionBadge
               value={c.status}
               options={badgeOptions("status")}
-              canEdit
+              canEdit={canEditField("status")}
               isSubmitting={fieldSaving === `${c.id}-status`}
               onChange={(next) => saveField(c, "status", next)}
             />
@@ -1135,7 +1165,7 @@ export default function SupaBoard({
             <OptionBadge
               value={c.priority}
               options={badgeOptions("priority")}
-              canEdit
+              canEdit={canEditField("priority")}
               isSubmitting={fieldSaving === `${c.id}-priority`}
               onChange={(next) => saveField(c, "priority", next)}
             />
@@ -1148,7 +1178,7 @@ export default function SupaBoard({
               value={c.issueTag}
               options={badgeOptions("issueTag")}
               chip
-              canEdit
+              canEdit={canEditField("issueTag")}
               isSubmitting={fieldSaving === `${c.id}-issueTag`}
               onChange={(next) => saveField(c, "issueTag", next)}
             />
@@ -1277,6 +1307,7 @@ export default function SupaBoard({
             <span className="result-count">{t(lang, "resultCount", filtered.length)}</span>
           </div>
         </div>
+        {perms["case.create"] && (
         <button type="button" className="primary" onClick={() => setNewCaseOpen(true)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -1284,6 +1315,7 @@ export default function SupaBoard({
           </svg>
           <span>{t(lang, "newCase")}</span>
         </button>
+        )}
       </div>
 
       <div className="table-wrap">

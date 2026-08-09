@@ -99,9 +99,20 @@ function orderedBars(
   return limit ? all.slice(0, limit) : all;
 }
 
-function BarChart({ bars, empty }: { bars: { name: string; value: number; color?: string }[]; empty: string }) {
+// `total` is the size of the set this chart breaks down, so a bar's length
+// reads as "this share of the cases in range". Sizing against the chart's
+// own largest value instead would make a lone 4 look the same as a lone 20.
+function BarChart({
+  bars,
+  total,
+  empty,
+}: {
+  bars: { name: string; value: number; color?: string }[];
+  total: number;
+  empty: string;
+}) {
   if (bars.length === 0) return <p className="hint">{empty}</p>;
-  const max = Math.max(...bars.map((b) => b.value), 1);
+  const denom = Math.max(total, 1);
   return (
     <div>
       {bars.map((b) => (
@@ -112,10 +123,11 @@ function BarChart({ bars, empty }: { bars: { name: string; value: number; color?
           <div className="bar-track">
             <div
               className="bar-fill"
-              style={{ width: `${Math.round((b.value / max) * 100)}%`, background: b.color }}
+              style={{ width: `${Math.round((b.value / denom) * 100)}%`, background: b.color }}
             />
           </div>
           <span className="bar-value">{b.value.toLocaleString()}</span>
+          <span className="bar-pct">{Math.round((b.value / denom) * 100)}%</span>
         </div>
       ))}
     </div>
@@ -171,6 +183,8 @@ export default function Dashboard({
   const hoStatusBars = orderedBars(countBy(ho, (r) => r.status), opts("ho-status"));
   const deptBars = orderedBars(deptCounts, opts("t1ho-dept"), 8);
   const typeBars = orderedBars(typeCounts, opts("ho-type"), 8);
+  const t1hoIssueBars = orderedBars(countBy(t1ho, (r) => r.issueTag), opts("t1ho-issue"), 8);
+  const hoIssueBars = orderedBars(countBy(ho, (r) => r.issueTag), opts("ho-issue"), 8);
 
   const p1 = priorityCounts["P1"] ?? 0;
   const p3p4 = (priorityCounts["P3"] ?? 0) + (priorityCounts["P4"] ?? 0);
@@ -257,30 +271,42 @@ export default function Dashboard({
         <div className="dash-card">
           <h3>{t(lang, "priorityTitle")}</h3>
           <p className="dash-sub">{t(lang, "prioritySub")}</p>
-          <BarChart bars={priorityBars} empty={t(lang, "noData")} />
+          <BarChart bars={priorityBars} total={scoped.length} empty={t(lang, "noData")} />
         </div>
 
         <div className="dash-card">
           <h3>{t(lang, "statusTitle")}</h3>
           <p className="dash-sub">{t(lang, "statusSub")}</p>
           <div className="ssg-label">T1 HO</div>
-          <BarChart bars={t1hoStatusBars} empty={t(lang, "noData")} />
+          <BarChart bars={t1hoStatusBars} total={t1ho.length} empty={t(lang, "noData")} />
           <div className="ssg-label" style={{ marginTop: 14 }}>
             HO
           </div>
-          <BarChart bars={hoStatusBars} empty={t(lang, "noData")} />
+          <BarChart bars={hoStatusBars} total={ho.length} empty={t(lang, "noData")} />
         </div>
 
         <div className="dash-card">
           <h3>T1 HO {t(lang, "deptTitle")}</h3>
           <p className="dash-sub">{t(lang, "ownDim", "T1 HO")}</p>
-          <BarChart bars={deptBars} empty={t(lang, "noData")} />
+          <BarChart bars={deptBars} total={t1ho.length} empty={t(lang, "noData")} />
         </div>
 
         <div className="dash-card">
           <h3>HO {t(lang, "typeTitle")}</h3>
           <p className="dash-sub">{t(lang, "ownDim", "HO")}</p>
-          <BarChart bars={typeBars} empty={t(lang, "noData")} />
+          <BarChart bars={typeBars} total={ho.length} empty={t(lang, "noData")} />
+        </div>
+
+        <div className="dash-card">
+          <h3>T1 HO Issue Tag</h3>
+          <p className="dash-sub">{t(lang, "statusSub")}</p>
+          <BarChart bars={t1hoIssueBars} total={t1ho.length} empty={t(lang, "noData")} />
+        </div>
+
+        <div className="dash-card">
+          <h3>HO Issue Tag</h3>
+          <p className="dash-sub">{t(lang, "statusSub")}</p>
+          <BarChart bars={hoIssueBars} total={ho.length} empty={t(lang, "noData")} />
         </div>
       </div>
     </div>

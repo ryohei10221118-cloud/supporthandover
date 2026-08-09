@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { readSessionToken, displayNameFromEmail, SESSION_COOKIE } from "@/lib/auth";
+import { displayNameFromEmail } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSessionRole } from "@/lib/permissionsServer";
+import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +26,12 @@ function parseDataUrl(dataUrl: string): { contentType: string; bytes: Buffer } |
 }
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
-  const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
-  if (!session) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  }
+  if (!role.permissions["case.create"]) {
+    return NextResponse.json({ error: "你的權限無法新增案件" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const cs = displayNameFromEmail(session.email);
+  const cs = displayNameFromEmail(role.email);
 
   try {
     const supabase = getSupabaseClient();
@@ -77,6 +80,10 @@ export async function POST(req: Request) {
     const nextSeq =
       board === "t1ho" ? `${prefix}${maxSeq + 1}` : `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
 
+    // cases.created_by is NOT NULL and FKs to public.users, so the author
+    // has to exist there before the insert (auto-provisioned on first write).
+    const createdBy = await resolveSupabaseUserId(role.email);
+
     const { data: created, error: insertError } = await supabase
       .from("cases")
       .insert({
@@ -94,6 +101,7 @@ export async function POST(req: Request) {
         status: status || (board === "t1ho" ? "Follow up" : "Follow up"),
         priority: "",
         archived: false,
+        created_by: createdBy,
       })
       .select("id, seq")
       .maybeSingle<{ id: string; seq: string }>();

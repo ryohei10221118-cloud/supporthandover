@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSessionRole } from "@/lib/permissionsServer";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +8,14 @@ export const dynamic = "force-dynamic";
 // version): any logged-in user may edit any comment, not just their own —
 // this is a shared CS tool, not a per-person blog.
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
-  const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
-  if (!session) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  }
+  // Editing a comment needs comment rights on at least one board; which
+  // board this comment belongs to is checked against the case below.
+  if (!role.permissions["comment.t1ho"] && !role.permissions["comment.ho"]) {
+    return NextResponse.json({ error: "你的權限無法編輯留言" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

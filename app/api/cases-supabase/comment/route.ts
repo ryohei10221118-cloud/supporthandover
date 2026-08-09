@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
-  const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
-  if (!session) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
   }
 
@@ -20,6 +18,11 @@ export async function POST(req: Request) {
 
   if (!caseId || !board) {
     return NextResponse.json({ error: "案件資訊有誤" }, { status: 400 });
+  }
+  // Commenting is granted per board — Viewer has it on T1 HO but not HO by
+  // default, and that split is configurable rather than hardcoded.
+  if (!role.permissions[board === "t1ho" ? "comment.t1ho" : "comment.ho"]) {
+    return NextResponse.json({ error: "你的權限無法在這個看板留言" }, { status: 403 });
   }
   if (!message) {
     return NextResponse.json({ error: "請輸入留言內容" }, { status: 400 });
@@ -44,7 +47,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "案件資訊有誤" }, { status: 400 });
     }
 
-    const authorId = await resolveSupabaseUserId(session.email);
+    const authorId = await resolveSupabaseUserId(role.email);
     const createdAt = new Date().toISOString();
 
     const { data: inserted, error: insertError } = await supabase
@@ -59,7 +62,7 @@ export async function POST(req: Request) {
       comment: {
         id: inserted.id,
         body: inserted.body,
-        authorEmail: session.email,
+        authorEmail: role.email,
         createdAt: inserted.created_at,
         editedAt: null,
       },

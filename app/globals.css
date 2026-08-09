@@ -2422,3 +2422,55 @@ tbody tr:nth-child(even) {
     grid-template-columns: 1fr;
   }
 }
+
+.bar-pct {
+  width: 38px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 預覽身份 role switcher ---------- */
+.role-switch-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sidebar-text-muted);
+  padding: 0 2px;
+}
+
+.role-switch {
+  display: flex;
+  gap: 4px;
+}
+
+.role-switch button {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  padding: 6px 2px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: var(--sidebar-text-muted);
+  cursor: pointer;
+}
+
+.role-switch button:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.role-switch button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.user-pill .who .role {
+  color: var(--sidebar-text-muted);
+  font-size: 0.68rem;
+}

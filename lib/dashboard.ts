@@ -14,11 +14,12 @@ export interface DashboardCase {
   hoType: string;
   status: string;
   priority: string;
+  issueTag: string;
 }
 
 export async function fetchDashboardCases(): Promise<DashboardCase[]> {
   const supabase = getSupabaseClient();
-  const COLUMNS = "board, create_date, dept, ho_type, status, priority";
+  const COLUMNS = "board, create_date, dept, ho_type, status, priority, issue_tag";
 
   const { count, error: countError } = await supabase
     .from("cases")
@@ -48,6 +49,7 @@ export async function fetchDashboardCases(): Promise<DashboardCase[]> {
             ho_type: string | null;
             status: string | null;
             priority: string | null;
+            issue_tag: string | null;
           }[]
         >()
     )
@@ -64,6 +66,7 @@ export async function fetchDashboardCases(): Promise<DashboardCase[]> {
         hoType: (r.ho_type ?? "").trim(),
         status: (r.status ?? "").trim(),
         priority: (r.priority ?? "").trim(),
+        issueTag: (r.issue_tag ?? "").trim(),
       });
     }
   }

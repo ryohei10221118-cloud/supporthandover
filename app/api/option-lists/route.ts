@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSessionRole } from "@/lib/permissionsServer";
 import { isListKey } from "@/lib/optionLists";
 
 export const dynamic = "force-dynamic";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
-async function requireSession() {
-  const cookieStore = await cookies();
-  return readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
+// 選項管理 is behind its own permission, so a Support user can't quietly
+// rewrite the shared dropdown vocabularies.
+async function canManageLists() {
+  const role = await getSessionRole();
+  return !!role && role.permissions["page.lists"];
 }
 
 // Add an option to a list.
 export async function POST(req: Request) {
-  if (!(await requireSession())) {
-    return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  if (!(await canManageLists())) {
+    return NextResponse.json({ error: "你的權限無法管理選項清單" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);
@@ -72,8 +73,8 @@ export async function POST(req: Request) {
 
 // Rename / recolour one option, or reorder a whole list.
 export async function PATCH(req: Request) {
-  if (!(await requireSession())) {
-    return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  if (!(await canManageLists())) {
+    return NextResponse.json({ error: "你的權限無法管理選項清單" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);
@@ -143,8 +144,8 @@ export async function PATCH(req: Request) {
 // Remove an option from a list. Cases already carrying the value keep it —
 // deleting here only takes it out of the dropdown.
 export async function DELETE(req: Request) {
-  if (!(await requireSession())) {
-    return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  if (!(await canManageLists())) {
+    return NextResponse.json({ error: "你的權限無法管理選項清單" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

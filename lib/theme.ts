@@ -143,3 +143,8 @@ export function storeTheme(state: ThemeState) {
     // ignore write failures (private browsing, storage full, etc.)
   }
 }
+
+// An admin previewing the board as another role. The sidebar dispatches the
+// previewed role's permission set (or null to go back to their own); the
+// boards use it for display only — the server still decides what it accepts.
+export const ROLE_PREVIEW_EVENT = "t1ho_role_preview";

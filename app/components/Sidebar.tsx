@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemePicker from "./ThemePicker";
-import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
+import type { Permissions } from "@/lib/permissions";
 
 type Lang = "zh" | "en";
 
@@ -13,6 +14,7 @@ const STRINGS = {
   navT1ho: { zh: "T1 HO", en: "T1 HO" },
   navHo: { zh: "HO", en: "HO" },
   navDashboard: { zh: "分析儀表板", en: "Dashboard" },
+  previewAs: { zh: "預覽身份", en: "Preview as" },
   navLists: { zh: "選項管理", en: "Option lists" },
   logout: { zh: "登出", en: "Sign out" },
 };
@@ -91,7 +93,11 @@ function BrandMark() {
 export default function Sidebar() {
   const pathname = usePathname();
   const [lang, setLang] = useState<Lang>("zh");
-  const [me, setMe] = useState<{ email: string; name: string } | null>(null);
+  const [me, setMe] = useState<{ email: string; name: string; role: string; roleLabel: string } | null>(null);
+  // Admins can preview the app as another role; anyone else sees their own.
+  const [previewRole, setPreviewRole] = useState<string | null>(null);
+  const [rolePerms, setRolePerms] = useState<Record<string, Permissions>>({});
+  const [myPerms, setMyPerms] = useState<Permissions | null>(null);
 
   useEffect(() => {
     try {
@@ -102,7 +108,16 @@ export default function Sidebar() {
     }
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => setMe(d.email ? { email: d.email, name: d.name } : null))
+      .then((d) => {
+        setMe(d.email ? { email: d.email, name: d.name, role: d.role, roleLabel: d.roleLabel } : null);
+        if (d.permissions) setMyPerms(d.permissions as Permissions);
+        if (d.role === "admin") {
+          fetch("/api/roles")
+            .then((r) => r.json())
+            .then((rd) => setRolePerms(rd.permissions ?? {}))
+            .catch(() => {});
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -115,6 +130,12 @@ export default function Sidebar() {
       // ignore
     }
     window.dispatchEvent(new CustomEvent(LANG_CHANGE_EVENT, { detail: next }));
+  }
+
+  function previewAs(role: string | null) {
+    setPreviewRole(role);
+    const detail = role && rolePerms[role] ? rolePerms[role] : null;
+    window.dispatchEvent(new CustomEvent(ROLE_PREVIEW_EVENT, { detail }));
   }
 
   async function logout() {
@@ -149,12 +170,19 @@ export default function Sidebar() {
     </svg>
   );
 
+  // While previewing another role, the nav follows what that role would see.
+  const effectivePerms = previewRole && rolePerms[previewRole] ? rolePerms[previewRole] : myPerms;
   const navItems = [
-    { href: "/", label: t(lang, "navT1ho"), icon: boardIcon },
-    { href: "/ho", label: t(lang, "navHo"), icon: boardIcon },
-    { href: "/dashboard", label: t(lang, "navDashboard"), icon: dashboardIcon },
-    { href: "/lists", label: t(lang, "navLists"), icon: listsIcon },
-  ];
+    { href: "/", label: t(lang, "navT1ho"), icon: boardIcon, show: true },
+    { href: "/ho", label: t(lang, "navHo"), icon: boardIcon, show: true },
+    {
+      href: "/dashboard",
+      label: t(lang, "navDashboard"),
+      icon: dashboardIcon,
+      show: !!effectivePerms?.["page.dashboard"],
+    },
+    { href: "/lists", label: t(lang, "navLists"), icon: listsIcon, show: !!effectivePerms?.["page.lists"] },
+  ].filter((i) => i.show);
 
   return (
     <aside className="sidebar">
@@ -184,10 +212,35 @@ export default function Sidebar() {
         </div>
 
         {me && (
+          <>
+          {me.role === "admin" && Object.keys(rolePerms).length > 0 && (
+            <div>
+              <div className="role-switch-label">{t(lang, "previewAs")}</div>
+              <div className="role-switch" style={{ marginTop: 5 }}>
+                {Object.keys(rolePerms).map((key) => {
+                  const active = (previewRole ?? me.role) === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={active ? "active" : undefined}
+                      onClick={() => previewAs(key === me.role ? null : key)}
+                    >
+                      {key === "admin" ? "Admin" : key === "support" ? "Support" : key === "viewer" ? "Viewer" : key}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="user-pill">
             <div className="user-avatar">{me.name.slice(0, 1).toUpperCase()}</div>
             <div className="who">
               <div className="name">{me.email}</div>
+              <div className="role">
+                {previewRole && previewRole !== me.role ? `${previewRole} (預覽)` : me.roleLabel}
+              </div>
             </div>
             <button type="button" className="sidebar-logout-btn" onClick={logout} aria-label={t(lang, "logout")} title={t(lang, "logout")}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -197,6 +250,7 @@ export default function Sidebar() {
               </svg>
             </button>
           </div>
+          </>
         )}
       </div>
     </aside>

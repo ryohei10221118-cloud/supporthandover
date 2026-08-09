@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSessionRole } from "@/lib/permissionsServer";
+import { FIELD_PERMISSION } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +36,8 @@ const MAX_LENGTH: Record<string, number> = { content: 5000, op: 1000 };
 const DEFAULT_MAX_LENGTH = 200;
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
-  const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
-  if (!session) {
+  const role = await getSessionRole();
+  if (!role) {
     return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
   }
 
@@ -54,6 +53,12 @@ export async function POST(req: Request) {
   const column = FIELD_COLUMNS[board][field];
   if (!column) {
     return NextResponse.json({ error: "不支援這個欄位" }, { status: 400 });
+  }
+  // The client hides what a role can't edit, but the check that counts is
+  // this one — the UI can be bypassed, this can't.
+  const needed = FIELD_PERMISSION[field];
+  if (!needed || !role.permissions[needed]) {
+    return NextResponse.json({ error: "你的權限無法修改這個欄位" }, { status: 403 });
   }
   const maxLength = MAX_LENGTH[field] ?? DEFAULT_MAX_LENGTH;
   if (value.length > maxLength) {

@@ -115,7 +115,10 @@ export default function ThemePicker({ lang }: { lang: "zh" | "en" }) {
                 type="button"
                 className={`theme-accent-swatch${state.accentKey === a.key ? " selected" : ""}`}
                 style={{ background: a[state.mode] }}
-                onClick={() => update({ accentKey: a.key })}
+                onClick={() => {
+                  update({ accentKey: a.key });
+                  setOpen(false);
+                }}
                 aria-label={a.key}
                 title={a.key}
               />
