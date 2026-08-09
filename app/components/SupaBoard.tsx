@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
-import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, NEW_CASE_EVENT } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 import NewCaseModal from "./NewCaseModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
 import OptionBadge, { type BadgeOption } from "./OptionBadge";
@@ -15,8 +15,7 @@ type Lang = "zh" | "en";
 
 type StringEntry = string | ((...args: never[]) => string);
 const STRINGS = {
-  refresh: { zh: "重新整理", en: "Refresh" },
-  refreshing: { zh: "更新中...", en: "Refreshing..." },
+  newCase: { zh: "新增案件", en: "New case" },
   totalCases: { zh: "總案件數", en: "Total cases" },
   openCases: { zh: "待追蹤(未完成)", en: "Open (not completed)" },
   completedCases: { zh: "已完成", en: "Completed" },
@@ -644,7 +643,7 @@ export default function SupaBoard({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openCommentKey]);
 
-  // --- New case modal (the topbar button announces the click) ---
+  // --- New case modal ---
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [me, setMe] = useState<string>("");
 
@@ -653,11 +652,6 @@ export default function SupaBoard({
       .then((r) => r.json())
       .then((d) => setMe(d.name ?? ""))
       .catch(() => {});
-    function handleNewCase() {
-      setNewCaseOpen(true);
-    }
-    window.addEventListener(NEW_CASE_EVENT, handleNewCase);
-    return () => window.removeEventListener(NEW_CASE_EVENT, handleNewCase);
   }, []);
 
   // --- Categorical cells (click-to-change option badges) ---
@@ -1283,8 +1277,12 @@ export default function SupaBoard({
             <span className="result-count">{t(lang, "resultCount", filtered.length)}</span>
           </div>
         </div>
-        <button className="refresh-btn" onClick={refresh} disabled={loading}>
-          {loading ? t(lang, "refreshing") : t(lang, "refresh")}
+        <button type="button" className="primary" onClick={() => setNewCaseOpen(true)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span>{t(lang, "newCase")}</span>
         </button>
       </div>
 
