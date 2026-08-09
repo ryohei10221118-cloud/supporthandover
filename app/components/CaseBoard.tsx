@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { CaseRow } from "@/lib/types";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
+import { LANG_CHANGE_EVENT } from "@/lib/theme";
 
 const WRITABLE_STATUSES = ["pending", "Follow up"] as const;
 
@@ -609,6 +610,16 @@ export default function CaseBoard({
     } catch {
       // ignore — falls back to the zh default
     }
+    // Sidebar's own toggle dispatches this after writing localStorage, so
+    // switching language takes effect immediately without navigating away
+    // and back (localStorage's own "storage" event doesn't fire in the
+    // same tab that made the write).
+    function handleLangChange(e: Event) {
+      const next = (e as CustomEvent<Lang>).detail;
+      if (next === "en" || next === "zh") setLang(next);
+    }
+    window.addEventListener(LANG_CHANGE_EVENT, handleLangChange);
+    return () => window.removeEventListener(LANG_CHANGE_EVENT, handleLangChange);
   }, []);
   function toggleLang() {
     setLang((prev) => {

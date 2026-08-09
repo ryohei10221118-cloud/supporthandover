@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
-import { LANG_STORAGE_KEY } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 
 // --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
@@ -433,6 +433,16 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     } catch {
       // ignore
     }
+    // See CaseBoard.tsx's identical listener for why this is needed —
+    // localStorage's own "storage" event doesn't fire in the tab that made
+    // the write, so without this the toggle only takes effect after
+    // navigating to another page.
+    function handleLangChange(e: Event) {
+      const next = (e as CustomEvent<Lang>).detail;
+      if (next === "en" || next === "zh") setLang(next);
+    }
+    window.addEventListener(LANG_CHANGE_EVENT, handleLangChange);
+    return () => window.removeEventListener(LANG_CHANGE_EVENT, handleLangChange);
   }, []);
 
   const [groupFilter, setGroupFilter] = useState<string[]>([]); // 部門 (t1ho) / Type (ho)

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemePicker from "./ThemePicker";
-import { LANG_STORAGE_KEY } from "@/lib/theme";
+import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 
 type Lang = "zh" | "en";
 
@@ -112,6 +112,7 @@ export default function Sidebar() {
     } catch {
       // ignore
     }
+    window.dispatchEvent(new CustomEvent(LANG_CHANGE_EVENT, { detail: next }));
   }
 
   async function logout() {
