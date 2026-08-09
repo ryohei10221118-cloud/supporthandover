@@ -372,6 +372,146 @@ h1 {
   margin: 0;
 }
 
+/* ---------- modal shell (link editor, new case) ---------- */
+.modal-overlay {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 12, 13, 0.55);
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: 14px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px -20px color-mix(in srgb, var(--text) 40%, transparent);
+}
+
+.modal h3 {
+  margin: 0 0 16px;
+  font-size: 1.02rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+
+.form-grid label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.form-grid textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.form-grid input:focus,
+.form-grid select:focus,
+.form-grid textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+button.ghost {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button.ghost:disabled,
+button.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ---------- related ticket / note link cells ---------- */
+.ext-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.ext-link:hover {
+  text-decoration: underline;
+}
+
+.link-content {
+  display: inline;
+}
+
+.link-edit-btn {
+  display: none;
+  margin-left: 6px;
+  font-size: 0.72rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  vertical-align: middle;
+  font-family: inherit;
+}
+
+.link-cell:hover .link-edit-btn,
+.link-edit-btn:focus-visible {
+  display: inline;
+}
+
+.link-edit-btn:hover {
+  color: var(--accent);
+}
+
 .banner {
   background: var(--overdue-bg);
   color: var(--overdue);
@@ -765,10 +905,6 @@ tbody tr:nth-child(even) {
   background: var(--bg);
 }
 
-tr.overdue td {
-  background: var(--overdue-bg);
-}
-
 .pagination-bar {
   display: flex;
   align-items: center;
@@ -920,11 +1056,6 @@ tr.overdue td {
 .badge.status-closedforus { background: #bfdbfe; color: #1e3a8a; }
 .badge.status-note { background: #e5e7eb; color: #374151; }
 .badge.status-procedure { background: #99f6e4; color: #115e59; }
-
-.badge.overdue-tag {
-  background: var(--overdue);
-  color: white;
-}
 
 .priority-tag {
   display: inline-flex;

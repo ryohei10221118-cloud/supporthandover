@@ -69,8 +69,6 @@ const STRINGS = {
   resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
   newestFirst: { zh: "↓新到舊", en: "↓Newest" },
   oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
-  daysAgo: { zh: (n: number) => `${n}天前`, en: (n: number) => `${n}d ago` },
-  overdueTag: { zh: "逾期", en: "Overdue" },
   addUpdate: { zh: "+ 更新", en: "+ Update" },
   cancel: { zh: "取消", en: "Cancel" },
   commentPlaceholder: { zh: "輸入留言…", en: "Write a comment…" },
@@ -561,14 +559,12 @@ function MultiSelect({
 // underneath it the way swapping to a real <select> used to.
 function StatusMenu({
   status,
-  isOverdue,
   canEdit,
   isSubmitting,
   onChangeStatus,
   lang,
 }: {
   status: string;
-  isOverdue: boolean;
   canEdit: boolean;
   isSubmitting: boolean;
   onChangeStatus: (status: string) => void;
@@ -629,7 +625,6 @@ function StatusMenu({
       ) : (
         badge
       )}
-      {isOverdue && <span className="badge overdue-tag">{t(lang, "overdueTag")}</span>}
     </div>
   );
 }
@@ -973,6 +968,17 @@ export default function CaseBoard({
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
+  // Every popup in this app closes on an outside click — dropdowns, the
+  // calendar, the accent picker — and the comment form is no exception.
+  useEffect(() => {
+    if (!openCommentKey) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest(".add-comment")) setOpenCommentKey(null);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openCommentKey]);
+
   function openComment(key: string) {
     setOpenCommentKey(key);
     setCommentDraft("");
@@ -1080,14 +1086,7 @@ export default function CaseBoard({
       case "seq":
         return <td key={colKey}>{c.seq}</td>;
       case "date":
-        return (
-          <td key={colKey}>
-            {c.date}
-            {c.daysOpen !== null && !c.isCompleted ? (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{t(lang, "daysAgo", c.daysOpen)}</div>
-            ) : null}
-          </td>
-        );
+        return <td key={colKey}>{c.date}</td>;
       case "department":
         return <td key={colKey}>{c.department}</td>;
       case "cs":
@@ -1142,7 +1141,6 @@ export default function CaseBoard({
           <td key={colKey}>
             <StatusMenu
               status={c.status}
-              isOverdue={c.isOverdue}
               canEdit={!!me}
               isSubmitting={isSubmittingStatus}
               onChangeStatus={(status) => quickChangeStatus(c, rowKey, status)}
@@ -1161,7 +1159,7 @@ export default function CaseBoard({
 
   function renderRow(c: CaseRow, key: string) {
     return (
-      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
+      <tr key={key}>
         {columnOrder.map((colKey) => renderCell(colKey, c, key))}
       </tr>
     );

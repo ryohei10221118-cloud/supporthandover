@@ -30,8 +30,13 @@ export interface SupaCaseRow {
   op: string | null;
   cs: string;
   content: string;
+  // Related ticket / Note are a label plus an optional link — with a URL the
+  // cell renders as a link, without one it's plain text (see the mockup's
+  // link-edit modal).
   relatedTicketLabel: string | null; // HO only
+  relatedTicketUrl: string | null; // HO only
   noteLabel: string | null; // HO only
+  noteUrl: string | null; // HO only
   status: string;
   priority: string;
   issueTag: string | null;
@@ -68,7 +73,9 @@ interface CaseDbRow {
   cs: string;
   content: string;
   related_ticket_label: string | null;
+  related_ticket_url: string | null;
   note_label: string | null;
+  note_url: string | null;
   status: string;
   priority: string;
   issue_tag: string | null;
@@ -87,7 +94,7 @@ interface CommentDbRow {
 export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
   const supabase = getSupabaseClient();
   const CASE_COLUMNS =
-    "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, note_label, status, priority, issue_tag, update_date";
+    "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, related_ticket_url, note_label, note_url, status, priority, issue_tag, update_date";
 
   const { count, error: countError } = await supabase
     .from("cases")
@@ -187,7 +194,9 @@ export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[
       cs: r.cs,
       content: r.content,
       relatedTicketLabel: r.related_ticket_label,
+      relatedTicketUrl: r.related_ticket_url,
       noteLabel: r.note_label,
+      noteUrl: r.note_url,
       status: r.status,
       priority: r.priority,
       issueTag: r.issue_tag,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent a
 import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
+import { LinkEditModal, type LinkKind } from "./LinkEditModal";
 
 // --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
@@ -27,8 +28,6 @@ const STRINGS = {
   resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
   newestFirst: { zh: "↓新到舊", en: "↓Newest" },
   oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
-  daysAgo: { zh: (n: number) => `${n}天前`, en: (n: number) => `${n}d ago` },
-  overdueTag: { zh: "逾期", en: "Overdue" },
   addUpdate: { zh: "+ 更新", en: "+ Update" },
   cancel: { zh: "取消", en: "Cancel" },
   editedTag: { zh: "已編輯", en: "edited" },
@@ -398,6 +397,41 @@ function CommentThread({
   );
 }
 
+// Related ticket / Note. A label with a URL renders as a link, a label
+// without one as plain text, and an empty value as an em dash — with a ✎
+// button on hover that opens the link editor, matching the mockup.
+function LinkCell({
+  label,
+  url,
+  onEdit,
+}: {
+  label: string | null;
+  url: string | null;
+  onEdit: () => void;
+}) {
+  const text = (label ?? "").trim();
+  return (
+    <td className="link-cell">
+      <span className="link-content">
+        {text ? (
+          url ? (
+            <a className="ext-link" href={url} target="_blank" rel="noopener noreferrer">
+              {text}
+            </a>
+          ) : (
+            text
+          )
+        ) : (
+          <span style={{ color: "var(--text-muted)" }}>—</span>
+        )}
+      </span>
+      <button type="button" className="link-edit-btn" onClick={onEdit} aria-label="edit">
+        ✎
+      </button>
+    </td>
+  );
+}
+
 function MultiSelect({
   allLabel,
   options,
@@ -514,6 +548,64 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+
+  // Every popup in this app closes on an outside click — dropdowns, the
+  // calendar, the accent picker — and the comment form is no exception.
+  useEffect(() => {
+    if (!openCommentKey) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest(".add-comment")) setOpenCommentKey(null);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openCommentKey]);
+
+  // --- Related ticket / Note link editor ---
+  const [linkTarget, setLinkTarget] = useState<{ caseId: string; kind: LinkKind } | null>(null);
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  function openLinkEditor(c: SupaCaseRow, kind: LinkKind) {
+    setLinkTarget({ caseId: c.id, kind });
+    setLinkError(null);
+  }
+
+  async function saveLink(label: string | null, url: string | null) {
+    if (!linkTarget) return;
+    setLinkSaving(true);
+    setLinkError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: linkTarget.caseId, kind: linkTarget.kind, label, url }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLinkError(data.error || t(lang, "saveFailed"));
+        return;
+      }
+      const isTicket = linkTarget.kind === "ticket";
+      setCases((prev) =>
+        prev.map((row) =>
+          row.id === linkTarget.caseId
+            ? {
+                ...row,
+                ...(isTicket
+                  ? { relatedTicketLabel: label, relatedTicketUrl: url }
+                  : { noteLabel: label, noteUrl: url }),
+                updateDate: data.case?.update_date ?? row.updateDate,
+              }
+            : row
+        )
+      );
+      setLinkTarget(null);
+    } finally {
+      setLinkSaving(false);
+    }
+  }
+
+  const linkCase = linkTarget ? cases.find((c) => c.id === linkTarget.caseId) : undefined;
 
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -775,14 +867,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
       case "seq":
         return <td key={colKey}>{c.seq}</td>;
       case "date":
-        return (
-          <td key={colKey}>
-            {c.date}
-            {c.daysOpen !== null && !c.isCompleted ? (
-              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{t(lang, "daysAgo", c.daysOpen)}</div>
-            ) : null}
-          </td>
-        );
+        return <td key={colKey}>{c.date}</td>;
       case "group":
         return <td key={colKey}>{board === "t1ho" ? c.dept : c.hoType}</td>;
       case "classification":
@@ -821,20 +906,24 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           />
         );
       case "relatedTicket":
-        // Rendered through linkify so a stored URL becomes a real link, the
-        // way the mockup shows this column. Values that are only a bare
-        // ticket key stay as text — turning those into links would need the
-        // team's Jira/wiki base URL, which isn't stored anywhere yet.
-        return <td key={colKey}>{linkify(c.relatedTicketLabel ?? "", `${rowKey}-ticket`)}</td>;
+        return (
+          <LinkCell
+            key={colKey}
+            label={c.relatedTicketLabel}
+            url={c.relatedTicketUrl}
+            onEdit={() => openLinkEditor(c, "ticket")}
+          />
+        );
       case "updateDate":
         return <td key={colKey}>{c.updateDate}</td>;
       case "noteLabel":
-        return <ClampedCell key={colKey} text={c.noteLabel ?? ""} cellKey={`${rowKey}-noteLabel`} expanded={expandedNotes} onToggle={toggleNote} lang={lang} />;
+        return (
+          <LinkCell key={colKey} label={c.noteLabel} url={c.noteUrl} onEdit={() => openLinkEditor(c, "note")} />
+        );
       case "status":
         return (
           <td key={colKey}>
             <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-            {c.isOverdue && <span className="badge overdue-tag">{t(lang, "overdueTag")}</span>}
           </td>
         );
       case "priority":
@@ -855,7 +944,7 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
   function renderRow(c: SupaCaseRow, key: string) {
     return (
-      <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
+      <tr key={key}>
         {columnOrder.map((colKey) => renderCell(colKey, c, key))}
       </tr>
     );
@@ -1062,6 +1151,21 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
           </button>
         </div>
       </div>
+
+      {linkTarget && (
+        <LinkEditModal
+          kind={linkTarget.kind}
+          lang={lang}
+          initialLabel={
+            (linkTarget.kind === "ticket" ? linkCase?.relatedTicketLabel : linkCase?.noteLabel) ?? ""
+          }
+          initialUrl={(linkTarget.kind === "ticket" ? linkCase?.relatedTicketUrl : linkCase?.noteUrl) ?? ""}
+          saving={linkSaving}
+          error={linkError}
+          onCancel={() => setLinkTarget(null)}
+          onSave={saveLink}
+        />
+      )}
     </div>
   );
 }
