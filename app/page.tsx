@@ -1,26 +1,22 @@
-import { fetchCases, mockCases } from "@/lib/cases";
-import CaseBoard from "./components/CaseBoard";
+import { fetchSupabaseCases } from "@/lib/supabaseCases";
+import { emptyOptionLists } from "@/lib/optionLists";
+import { fetchOptionLists } from "@/lib/optionListsServer";
+import SupaBoard from "./components/SupaBoard";
 import Topbar from "./components/Topbar";
 
-// Short revalidate window instead of force-dynamic: repeat visits within
-// 30s get an instant cached response instead of a fresh Sheets API round
-// trip (which is what made switching between T1 HO / HO feel slow — /ho
-// and /t1ho-test already got this fix, this page just hadn't caught up).
-// The "重新整理" button still always fetches live via /api/cases.
+// T1 HO reads from Supabase, same as HO. The Google Sheet is a backup now,
+// not the source of truth — nothing this board does writes back to it.
 export const revalidate = 30;
 
 export default async function Home() {
-  let initialCases;
-  let source: "sheet" | "mock" = "mock";
+  let initialCases: Awaited<ReturnType<typeof fetchSupabaseCases>> = [];
+  let optionLists = emptyOptionLists();
   let error: string | null = null;
 
   try {
-    const result = await fetchCases();
-    initialCases = result.cases;
-    source = result.source;
+    [initialCases, optionLists] = await Promise.all([fetchSupabaseCases("t1ho"), fetchOptionLists()]);
   } catch (err) {
-    initialCases = mockCases();
-    error = err instanceof Error ? err.message : "Unknown error fetching sheet";
+    error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
   }
 
   return (
@@ -28,7 +24,7 @@ export default async function Home() {
       <Topbar page="t1ho" />
       <main className="content">
         <div className="page">
-          <CaseBoard initialCases={initialCases} initialSource={source} initialError={error} />
+          <SupaBoard board="t1ho" initialCases={initialCases} initialError={error} optionLists={optionLists} />
         </div>
       </main>
     </>

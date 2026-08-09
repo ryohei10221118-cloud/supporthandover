@@ -12,6 +12,7 @@ const STRINGS = {
   tagline: { zh: "案件追蹤看板", en: "Case Tracking Board" },
   navT1ho: { zh: "T1 HO", en: "T1 HO" },
   navHo: { zh: "HO", en: "HO" },
+  navLists: { zh: "選項管理", en: "Option lists" },
   logout: { zh: "登出", en: "Sign out" },
 };
 
@@ -122,9 +123,27 @@ export default function Sidebar() {
 
   if (pathname === "/login") return null;
 
+  const boardIcon = (
+    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 3h18v18H3z" />
+      <path d="M3 9h18M9 21V9" />
+    </svg>
+  );
+  const listsIcon = (
+    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+
   const navItems = [
-    { href: "/", label: t(lang, "navT1ho") },
-    { href: "/ho", label: t(lang, "navHo") },
+    { href: "/", label: t(lang, "navT1ho"), icon: boardIcon },
+    { href: "/ho", label: t(lang, "navHo"), icon: boardIcon },
+    { href: "/lists", label: t(lang, "navLists"), icon: listsIcon },
   ];
 
   return (
@@ -140,10 +159,7 @@ export default function Sidebar() {
       <nav className="side-nav">
         {navItems.map((item) => (
           <Link key={item.href} href={item.href} className={`nav-item${pathname === item.href ? " active" : ""}`}>
-            <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 3h18v18H3z" />
-              <path d="M3 9h18M9 21V9" />
-            </svg>
+            {item.icon}
             <span>{item.label}</span>
           </Link>
         ))}

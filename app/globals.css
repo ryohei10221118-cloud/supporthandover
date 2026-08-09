@@ -372,6 +372,215 @@ h1 {
   margin: 0;
 }
 
+/* ---------- 選項管理 (option lists) ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.card-head h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.card-head .hint,
+.hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 3px 0 0;
+}
+
+.list-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.list-picker button {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.list-picker button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.list-picker button.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.list-picker .global-tag {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.list-picker button.active .global-tag {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.option-row:last-of-type {
+  border-bottom: none;
+}
+
+.drag-handle {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.reorder-btn {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.55rem;
+  line-height: 1;
+  padding: 1px 3px;
+  font-family: inherit;
+}
+
+.reorder-btn:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.reorder-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.swatch-input {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.option-name-input {
+  flex: 1;
+  min-width: 120px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.option-name-input:hover {
+  border-color: var(--border);
+}
+
+.option-name-input:focus {
+  outline: none;
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+.option-count {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.option-count.is-unused {
+  color: var(--overdue);
+}
+
+.icon-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.icon-btn:hover {
+  border-color: var(--overdue);
+  color: var(--overdue);
+}
+
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.add-row input[type="text"] {
+  flex: 1;
+  min-width: 200px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 11px;
+}
+
+.add-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
 /* ---------- modal shell (link editor, new case) ---------- */
 .modal-overlay {
   display: flex;

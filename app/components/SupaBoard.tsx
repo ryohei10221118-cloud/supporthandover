@@ -114,7 +114,20 @@ type ColumnKey =
   | "priority"
   | "issueTag";
 
-const T1HO_COLUMNS: ColumnKey[] = ["seq", "date", "group", "cs", "op", "note", "reply", "status"];
+// Mockup column set: 序列 日期 部門 CS OP 內容 回答內容 Update date 狀態 Priority Issue Tag
+const T1HO_COLUMNS: ColumnKey[] = [
+  "seq",
+  "date",
+  "group",
+  "cs",
+  "op",
+  "note",
+  "reply",
+  "updateDate",
+  "status",
+  "priority",
+  "issueTag",
+];
 const HO_COLUMNS: ColumnKey[] = [
   "seq",
   "date",
@@ -140,13 +153,13 @@ const COLUMN_LABELS: Record<ColumnKey, { t1ho: Record<Lang, string>; ho: Record<
   cs: { t1ho: { zh: "CS", en: "CS" }, ho: { zh: "CS", en: "CS" } },
   op: { t1ho: { zh: "OP", en: "OP" }, ho: { zh: "OP", en: "OP" } },
   note: { t1ho: { zh: "內容", en: "Note" }, ho: { zh: "內容", en: "Note" } },
-  reply: { t1ho: { zh: "追蹤狀況/更新備註", en: "Tracking / Update notes" }, ho: { zh: "追蹤狀況/更新備註", en: "Tracking / Update notes" } },
+  reply: { t1ho: { zh: "回答內容", en: "Reply" }, ho: { zh: "追蹤狀況/更新備註", en: "Tracking / Update notes" } },
   relatedTicket: { t1ho: { zh: "", en: "" }, ho: { zh: "Related ticket", en: "Related ticket" } },
-  updateDate: { t1ho: { zh: "", en: "" }, ho: { zh: "更新日期", en: "Update date" } },
+  updateDate: { t1ho: { zh: "更新日期", en: "Update date" }, ho: { zh: "更新日期", en: "Update date" } },
   noteLabel: { t1ho: { zh: "", en: "" }, ho: { zh: "Note", en: "Note" } },
   status: { t1ho: { zh: "狀態", en: "Status" }, ho: { zh: "狀態", en: "Status" } },
-  priority: { t1ho: { zh: "", en: "" }, ho: { zh: "Priority", en: "Priority" } },
-  issueTag: { t1ho: { zh: "", en: "" }, ho: { zh: "Issue Tag", en: "Issue Tag" } },
+  priority: { t1ho: { zh: "Priority", en: "Priority" }, ho: { zh: "Priority", en: "Priority" } },
+  issueTag: { t1ho: { zh: "Issue Tag", en: "Issue Tag" }, ho: { zh: "Issue Tag", en: "Issue Tag" } },
 };
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {

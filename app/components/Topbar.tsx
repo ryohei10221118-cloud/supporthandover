@@ -15,6 +15,13 @@ export const PAGE_META = {
     title: { zh: "HO", en: "HO" },
     desc: { zh: "需要長期追蹤的案件，交接用。", en: "Cases needing long-term tracking and handover." },
   },
+  lists: {
+    title: { zh: "選項管理", en: "Option lists" },
+    desc: {
+      zh: "維護各分頁的狀態、分類等下拉選項，包含顏色與排序。",
+      en: "Maintain each page's status/category dropdown options, including colour and order.",
+    },
+  },
   t1hoTest: {
     title: { zh: "T1 HO（Supabase 測試版）", en: "T1 HO (Supabase preview)" },
     desc: {
