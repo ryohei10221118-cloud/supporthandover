@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { SupaBoard, SupaCaseRow } from "@/lib/supabaseCases";
 
 const T1HO_STATUS_ORDER = ["pending", "follow up", "move to ho", "已完成"];
@@ -34,6 +34,114 @@ function seqNumber(seq: string): number {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+// --- Draggable/resizable columns (same behavior as CaseBoard.tsx's T1 HO
+// table, just with a column set that varies by board) ---
+type ColumnKey = "seq" | "date" | "group" | "classification" | "cs" | "op" | "note" | "reply" | "relatedTicket" | "status";
+
+const T1HO_COLUMNS: ColumnKey[] = ["seq", "date", "group", "cs", "op", "note", "reply", "status"];
+const HO_COLUMNS: ColumnKey[] = ["seq", "date", "group", "classification", "cs", "op", "note", "reply", "relatedTicket", "status"];
+
+const COLUMN_LABELS: Record<ColumnKey, { t1ho: string; ho: string }> = {
+  seq: { t1ho: "序列", ho: "ID" },
+  date: { t1ho: "日期", ho: "日期" },
+  group: { t1ho: "部門", ho: "Type" },
+  classification: { t1ho: "", ho: "Classification" },
+  cs: { t1ho: "CS", ho: "CS" },
+  op: { t1ho: "OP", ho: "OP" },
+  note: { t1ho: "內容", ho: "內容" },
+  reply: { t1ho: "追蹤狀況/更新備註", ho: "追蹤狀況/更新備註" },
+  relatedTicket: { t1ho: "", ho: "Related ticket" },
+  status: { t1ho: "狀態", ho: "狀態" },
+};
+
+const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
+  seq: 90,
+  date: 110,
+  group: 100,
+  classification: 120,
+  cs: 90,
+  op: 160,
+  note: 260,
+  reply: 260,
+  relatedTicket: 130,
+  status: 140,
+};
+const MIN_COLUMN_WIDTH = 60;
+
+function isColumnOrder(value: unknown, defaults: ColumnKey[]): value is ColumnKey[] {
+  return (
+    Array.isArray(value) &&
+    value.length === defaults.length &&
+    defaults.every((k) => value.includes(k))
+  );
+}
+
+// A plain character count under-clamps dense CJK text — see CaseBoard.tsx's
+// identical helper for the full rationale. Kept as a duplicate here rather
+// than a shared import since the two board components otherwise don't share
+// a module and this is the only piece worth lifting out on its own.
+const FULLWIDTH_RE = /[　-鿿＀-￯]/;
+
+function isVisuallyLong(text: string): boolean {
+  if (text.split("\n").length > 3) return true;
+  let weighted = 0;
+  for (const ch of text) {
+    weighted += FULLWIDTH_RE.test(ch) ? 2 : 1;
+    if (weighted > 120) return true;
+  }
+  return false;
+}
+
+const URL_RE = /(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g;
+const TRAILING_PUNCT_RE = /[),.;:!?'\]]+$/;
+
+function linkify(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  text.split(URL_RE).forEach((part, i) => {
+    if (!part) return;
+    if (!/^https?:\/\//.test(part)) {
+      nodes.push(part);
+      return;
+    }
+    const trailingMatch = part.match(TRAILING_PUNCT_RE);
+    const trailing = trailingMatch ? trailingMatch[0] : "";
+    const url = trailing ? part.slice(0, part.length - trailing.length) : part;
+    nodes.push(
+      <a key={`${keyPrefix}-${i}`} href={url} target="_blank" rel="noopener noreferrer" className="reply-link">
+        {url}
+      </a>
+    );
+    if (trailing) nodes.push(trailing);
+  });
+  return nodes;
+}
+
+function ClampedCell({
+  text,
+  cellKey,
+  expanded,
+  onToggle,
+}: {
+  text: string;
+  cellKey: string;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  if (!text) return <td className="note-cell" />;
+  const isLong = isVisuallyLong(text);
+  const isExpanded = expanded.has(cellKey);
+  return (
+    <td className="note-cell">
+      <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
+      {isLong && (
+        <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
+          {isExpanded ? "▲ 收合" : "⋯ 顯示更多"}
+        </button>
+      )}
+    </td>
+  );
+}
+
 export default function SupaBoard({ board, initialCases, initialError }: { board: SupaBoard; initialCases: SupaCaseRow[]; initialError: string | null }) {
   const [cases, setCases] = useState(initialCases);
   const [error, setError] = useState(initialError);
@@ -43,7 +151,16 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("none");
-  const [showOlder, setShowOlder] = useState(false);
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+
+  function toggleNote(key: string) {
+    setExpandedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const groupLabel = board === "t1ho" ? "部門" : "Type";
   const groupValue = (c: SupaCaseRow) => (board === "t1ho" ? c.dept : c.hoType) ?? "";
@@ -101,50 +218,141 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
     setDateSort((prev) => (prev === "none" ? "desc" : prev === "desc" ? "asc" : "none"));
   }
 
-  const OLD_THRESHOLD_DAYS = 30;
-  const { recentRows, olderRows } = useMemo(() => {
-    const recent: SupaCaseRow[] = [];
-    const older: SupaCaseRow[] = [];
-    for (const c of sorted) {
-      if (c.daysOpen === null || c.daysOpen > OLD_THRESHOLD_DAYS) older.push(c);
-      else recent.push(c);
-    }
-    return { recentRows: recent, olderRows: older };
-  }, [sorted]);
+  // --- Pagination (matches CaseBoard.tsx's T1 HO table) ---
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filtered]);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+  const pagedRows = useMemo(
+    () => sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [sorted, currentPage, pageSize]
+  );
 
   const openCount = cases.filter((c) => !c.isCompleted).length;
   const completedCount = cases.filter((c) => c.isCompleted).length;
   const overdueCount = cases.filter((c) => c.isOverdue).length;
 
-  const colCount = board === "t1ho" ? 8 : 9;
+  // --- Draggable column order / resizable column widths ---
+  const columns = board === "t1ho" ? T1HO_COLUMNS : HO_COLUMNS;
+  const orderStorageKey = `t1ho_supa_column_order_${board}`;
+  const widthsStorageKey = `t1ho_supa_column_widths_${board}`;
+
+  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>(columns);
+  const draggedColumnRef = useRef<ColumnKey | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(orderStorageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (isColumnOrder(parsed, columns)) setColumnOrder(parsed);
+      else setColumnOrder(columns);
+    } catch {
+      setColumnOrder(columns);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board]);
+
+  function moveColumn(dragged: ColumnKey, target: ColumnKey) {
+    if (dragged === target) return;
+    setColumnOrder((prev) => {
+      const next = prev.filter((k) => k !== dragged);
+      next.splice(next.indexOf(target), 0, dragged);
+      try {
+        localStorage.setItem(orderStorageKey, JSON.stringify(next));
+      } catch {
+        // ignore write failures (private browsing, storage full, etc.)
+      }
+      return next;
+    });
+  }
+
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(widthsStorageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === "object") {
+        setColumnWidths((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      // ignore malformed/unavailable localStorage — fall back to default
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board]);
+
+  function startColumnResize(key: ColumnKey, e: ReactMouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[key];
+
+    function onMove(ev: MouseEvent) {
+      const nextWidth = Math.max(MIN_COLUMN_WIDTH, startWidth + (ev.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }));
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setColumnWidths((prev) => {
+        try {
+          localStorage.setItem(widthsStorageKey, JSON.stringify(prev));
+        } catch {
+          // ignore write failures
+        }
+        return prev;
+      });
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function renderCell(colKey: ColumnKey, c: SupaCaseRow, rowKey: string): ReactNode {
+    switch (colKey) {
+      case "seq":
+        return <td key={colKey}>{c.seq}</td>;
+      case "date":
+        return (
+          <td key={colKey}>
+            {c.date}
+            {c.daysOpen !== null && !c.isCompleted ? (
+              <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
+            ) : null}
+          </td>
+        );
+      case "group":
+        return <td key={colKey}>{board === "t1ho" ? c.dept : c.hoType}</td>;
+      case "classification":
+        return <td key={colKey}>{c.hoClass}</td>;
+      case "cs":
+        return <td key={colKey}>{c.cs}</td>;
+      case "op":
+        return <ClampedCell key={colKey} text={c.op ?? ""} cellKey={`${rowKey}-op`} expanded={expandedNotes} onToggle={toggleNote} />;
+      case "note":
+        return <ClampedCell key={colKey} text={c.content} cellKey={`${rowKey}-note`} expanded={expandedNotes} onToggle={toggleNote} />;
+      case "reply":
+        return <ClampedCell key={colKey} text={c.latestNote} cellKey={`${rowKey}-reply`} expanded={expandedNotes} onToggle={toggleNote} />;
+      case "relatedTicket":
+        return <td key={colKey}>{c.relatedTicketLabel}</td>;
+      case "status":
+        return (
+          <td key={colKey}>
+            <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
+            {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
+          </td>
+        );
+    }
+  }
 
   function renderRow(c: SupaCaseRow, key: string) {
     return (
       <tr key={key} className={c.isOverdue ? "overdue" : undefined}>
-        <td>{c.seq}</td>
-        <td>
-          {c.date}
-          {c.daysOpen !== null && !c.isCompleted ? (
-            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{c.daysOpen}天前</div>
-          ) : null}
-        </td>
-        {board === "t1ho" ? <td>{c.dept}</td> : <td>{c.hoType}</td>}
-        {board === "ho" && <td>{c.hoClass}</td>}
-        <td>{c.cs}</td>
-        <td>{c.op}</td>
-        <td className="note-cell">
-          {c.content}
-          {c.latestNote ? (
-            <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed var(--border)", color: "var(--text-muted)" }}>
-              {c.latestNote}
-            </div>
-          ) : null}
-        </td>
-        {board === "ho" && <td>{c.relatedTicketLabel}</td>}
-        <td>
-          <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-          {c.isOverdue && <span className="badge overdue-tag">逾期</span>}
-        </td>
+        {columnOrder.map((colKey) => renderCell(colKey, c, key))}
       </tr>
     );
   }
@@ -219,40 +427,90 @@ export default function SupaBoard({ board, initialCases, initialError }: { board
 
       <div className="table-wrap">
         <table>
+          <colgroup>
+            {columnOrder.map((colKey) => (
+              <col key={colKey} style={{ width: columnWidths[colKey] }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th>{board === "t1ho" ? "序列" : "ID"}</th>
-              <th className="sortable" onClick={toggleDateSort}>
-                日期 {dateSort === "desc" ? "↓新到旧" : dateSort === "asc" ? "↑旧到新" : "↕"}
-              </th>
-              {board === "t1ho" ? <th>部门</th> : <th>Type</th>}
-              {board === "ho" && <th>Classification</th>}
-              <th>CS</th>
-              <th>OP</th>
-              <th>内容</th>
-              {board === "ho" && <th>Related ticket</th>}
-              <th>状态</th>
+              {columnOrder.map((colKey) => {
+                const dragProps = {
+                  draggable: true,
+                  onDragStart: () => {
+                    draggedColumnRef.current = colKey;
+                  },
+                  onDragOver: (e: DragEvent) => e.preventDefault(),
+                  onDrop: (e: DragEvent) => {
+                    e.preventDefault();
+                    if (draggedColumnRef.current) moveColumn(draggedColumnRef.current, colKey);
+                    draggedColumnRef.current = null;
+                  },
+                };
+                const resizeHandle = (
+                  <span className="col-resize-handle" draggable={false} onMouseDown={(e) => startColumnResize(colKey, e)} />
+                );
+                const label = board === "t1ho" ? COLUMN_LABELS[colKey].t1ho : COLUMN_LABELS[colKey].ho;
+                if (colKey === "date") {
+                  return (
+                    <th key={colKey} className="sortable draggable-col" onClick={toggleDateSort} {...dragProps}>
+                      {label} {dateSort === "desc" ? "↓新到旧" : dateSort === "asc" ? "↑旧到新" : "↕"}
+                      {resizeHandle}
+                    </th>
+                  );
+                }
+                return (
+                  <th key={colKey} className="draggable-col" {...dragProps}>
+                    {label}
+                    {resizeHandle}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {recentRows.map((c, i) => renderRow(c, `recent-${i}`))}
-            {olderRows.length > 0 && (
-              <tr>
-                <td colSpan={colCount} className="collapse-toggle" onClick={() => setShowOlder((v) => !v)}>
-                  {showOlder ? "▲ 收合" : "▼ 显示"} 1个月前的纪录({olderRows.length}笔)
-                </td>
-              </tr>
-            )}
-            {showOlder && olderRows.map((c, i) => renderRow(c, `older-${i}`))}
+            {pagedRows.map((c, i) => renderRow(c, `row-${i}`))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={colCount} className="empty">
+                <td colSpan={columnOrder.length} className="empty">
                   没有符合条件的案件
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="pagination-bar">
+        <div className="page-size-group">
+          每頁顯示
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+          >
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+          </select>
+        </div>
+        <div className="page-nav">
+          <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>
+            ‹
+          </button>
+          <span className="page-indicator">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+          >
+            ›
+          </button>
+        </div>
       </div>
     </div>
   );
