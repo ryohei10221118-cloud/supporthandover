@@ -26,8 +26,11 @@ export async function POST(req: NextRequest) {
   const { role, deny } = await requireAdmin();
   if (deny) return deny;
   const board = boardFrom(req);
+  // Off unless asked for: overwriting a status is the only part of an import
+  // that can lose work done in the app.
+  const syncStatus = req.nextUrl.searchParams.get("syncStatus") === "1";
   try {
-    const result = await applySheetImport(board, role.email);
+    const result = await applySheetImport(board, role.email, { syncStatus });
     return NextResponse.json({ ok: true, ...result, plan: await planSheetImport(board) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "匯入失敗" }, { status: 502 });

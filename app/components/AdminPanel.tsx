@@ -30,8 +30,8 @@ const STRINGS = {
     en: "For the changeover, this pulls in cases that exist in the sheet but not on the board. Preview first, then run.",
   },
   importSafety: {
-    zh: "只會新增，不會修改或刪除任何東西：已存在的案件（同一個序列）完全不動，所以你在工具上改過的內容不會被 Sheet 蓋掉；回覆只有在該案件還沒有一模一樣的留言時才會新增。因此重複執行是安全的。",
-    en: "Inserts only — nothing is updated or deleted. A case that already exists (same seq) is left untouched, so edits made in the tool are never overwritten, and a reply is added only if that case has no identical comment. Running it more than once is safe.",
+    zh: "預設只會新增，不會修改或刪除任何東西：已存在的案件（同一個序列）完全不動，所以你在工具上改過的內容不會被 Sheet 蓋掉；回覆只有在該案件還沒有一模一樣的留言時才會新增。因此重複執行是安全的。唯一的例外是下面的「同步狀態」，要自己勾才會生效。",
+    en: "By default it inserts only — nothing is updated or deleted. A case that already exists (same seq) is left untouched, so edits made in the tool are never overwritten, and a reply is added only if that case has no identical comment. Running it more than once is safe. The one exception is the status sync below, which you have to tick.",
   },
   importBoard: { zh: "看板", en: "Board" },
   importPreview: { zh: "試算", en: "Preview" },
@@ -44,10 +44,13 @@ const STRINGS = {
   importNewCases: { zh: "將新增的案件", en: "Cases to add" },
   importNewComments: { zh: "將新增的回覆", en: "Replies to add" },
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
+  importStatusDiff: { zh: "狀態不一致", en: "Status differs" },
   importNothing: { zh: "沒有需要補進來的東西，看板已經跟 Sheet 同步。", en: "Nothing to bring across — the board matches the sheet." },
   importDone: {
-    zh: (c: number, m: number) => `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆。`,
-    en: (c: number, m: number) => `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added.`,
+    zh: (c: number, m: number, s: number) =>
+      `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆，更新 ${s.toLocaleString()} 筆狀態。`,
+    en: (c: number, m: number, s: number) =>
+      `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added, ${s.toLocaleString()} statuses updated.`,
   },
   importSample: { zh: "將新增的案件（前 20 筆）", en: "Cases to add (first 20)" },
   importSampleHint: {
@@ -58,11 +61,37 @@ const STRINGS = {
   importColCategory: { zh: "部門 / 分類", en: "Dept / category" },
   importConfirmTitle: { zh: "確定要匯入嗎？", en: "Run the import?" },
   importConfirmBody: {
-    zh: (c: number, m: number) => `會新增 ${c.toLocaleString()} 筆案件與 ${m.toLocaleString()} 則回覆。既有資料不會被更動。`,
-    en: (c: number, m: number) =>
-      `${c.toLocaleString()} cases and ${m.toLocaleString()} replies will be added. Nothing existing is changed.`,
+    zh: (c: number, m: number) => `會新增 ${c.toLocaleString()} 筆案件與 ${m.toLocaleString()} 則回覆。`,
+    en: (c: number, m: number) => `${c.toLocaleString()} cases and ${m.toLocaleString()} replies will be added.`,
+  },
+  importConfirmNoStatus: {
+    zh: "既有案件完全不會被更動。",
+    en: "Existing cases are left completely untouched.",
+  },
+  importConfirmStatus: {
+    zh: (s: number) =>
+      `另外會把 ${s.toLocaleString()} 筆既有案件的狀態改成 Sheet 上的值，看板現在的狀態會被覆蓋掉（舊值會留在該欄位的編輯紀錄裡）。`,
+    en: (s: number) =>
+      `It will also overwrite the status of ${s.toLocaleString()} existing cases with the sheet's value. The board's current status is replaced — the old value is kept in that field's edit history.`,
   },
   importConfirm: { zh: "確定匯入", en: "Import" },
+
+  importSyncStatus: { zh: "一併同步狀態", en: "Also sync statuses" },
+  importSyncStatusHint: {
+    zh: "勾起來的話，上面這些案件的狀態會改成 Sheet 上的值。預設不勾，是因為同一筆案件可能兩邊都動過 —— 如果你在工具上已經把它處理完了，Sheet 的舊狀態會把結果洗掉。先看過清單再決定。",
+    en: "Ticking this rewrites the statuses listed above with the sheet's value. It's off by default because a case can be touched on both sides — if you already finished it in the tool, the sheet's older status would undo that. Read the list first.",
+  },
+  importStatusTitle: { zh: "狀態不一致的案件", en: "Cases whose status differs" },
+  importStatusHint: {
+    zh: "左邊是 Sheet 上的狀態，右邊是看板目前的狀態。不勾下面的選項的話，這些都不會被動到。",
+    en: "The sheet's status on the left, the board's current status on the right. Without the checkbox below, none of these are touched.",
+  },
+  importColSheetStatus: { zh: "Sheet 狀態", en: "Sheet status" },
+  importColBoardStatus: { zh: "看板現在的狀態", en: "Status on the board" },
+  importStatusMore: {
+    zh: (n: number) => `…另外還有 ${n.toLocaleString()} 筆，一樣會一起同步。`,
+    en: (n: number) => `…and ${n.toLocaleString()} more, all synced together.`,
+  },
 
   statusTitle: { zh: "哪些狀態算結案", en: "Which statuses count as finished" },
   statusHint: {
@@ -347,19 +376,35 @@ export default function AdminPanel({
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [importBoard, setImportBoard] = useState<"t1ho" | "ho">("t1ho");
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+  // Off every time a plan is drawn up, so an earlier tick can't carry over
+  // into a later import the user hasn't looked at.
+  const [syncStatus, setSyncStatus] = useState(false);
 
   async function previewImport() {
     setPlan(null);
+    setSyncStatus(false);
     const data = await call(`/api/admin/sheet-import?board=${importBoard}`, "GET");
     if (data) setPlan(data as unknown as ImportPlan);
   }
 
   async function runImport() {
-    const data = await call(`/api/admin/sheet-import?board=${importBoard}`, "POST");
+    const data = await call(
+      `/api/admin/sheet-import?board=${importBoard}${syncStatus ? "&syncStatus=1" : ""}`,
+      "POST"
+    );
     setImportConfirmOpen(false);
     if (!data) return;
+    setSyncStatus(false);
     setPlan(data.plan as unknown as ImportPlan);
-    setNotice(t(lang, "importDone", Number(data.casesInserted ?? 0), Number(data.commentsInserted ?? 0)));
+    setNotice(
+      t(
+        lang,
+        "importDone",
+        Number(data.casesInserted ?? 0),
+        Number(data.commentsInserted ?? 0),
+        Number(data.statusesUpdated ?? 0)
+      )
+    );
   }
 
   // --- 案件封存 ---
@@ -758,11 +803,14 @@ export default function AdminPanel({
               <button type="button" className="ghost" disabled={busy} onClick={previewImport}>
                 {busy ? t(lang, "saving") : t(lang, "importPreview")}
               </button>
-              {plan && (plan.newCases.length > 0 || plan.newComments.length > 0) && (
-                <button type="button" className="primary" disabled={busy} onClick={() => setImportConfirmOpen(true)}>
-                  {t(lang, "importRun")}
-                </button>
-              )}
+              {plan &&
+                (plan.newCases.length > 0 ||
+                  plan.newComments.length > 0 ||
+                  (syncStatus && plan.statusChanges.length > 0)) && (
+                  <button type="button" className="primary" disabled={busy} onClick={() => setImportConfirmOpen(true)}>
+                    {t(lang, "importRun")}
+                  </button>
+                )}
             </div>
 
             {importBoard === "ho" && <p className="hint">{t(lang, "importHoNote")}</p>}
@@ -783,16 +831,22 @@ export default function AdminPanel({
                     <div className="l">{t(lang, "importNewComments")}</div>
                   </div>
                   <div className="archive-stat">
+                    <div className="n">{plan.statusChanges.length.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importStatusDiff")}</div>
+                  </div>
+                  <div className="archive-stat">
                     <div className="n">{plan.unchanged.toLocaleString()}</div>
                     <div className="l">{t(lang, "importUnchanged")}</div>
                   </div>
                 </div>
 
-                {plan.newCases.length === 0 && plan.newComments.length === 0 && (
-                  <p className="hint" style={{ marginTop: 14 }}>
-                    {t(lang, "importNothing")}
-                  </p>
-                )}
+                {plan.newCases.length === 0 &&
+                  plan.newComments.length === 0 &&
+                  plan.statusChanges.length === 0 && (
+                    <p className="hint" style={{ marginTop: 14 }}>
+                      {t(lang, "importNothing")}
+                    </p>
+                  )}
 
                 {plan.newCases.length > 0 && (
                   <>
@@ -826,6 +880,49 @@ export default function AdminPanel({
                         </tbody>
                       </table>
                     </div>
+                  </>
+                )}
+
+                {plan.statusChanges.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
+                      {t(lang, "importStatusTitle")}
+                    </p>
+                    <p className="hint">{t(lang, "importStatusHint")}</p>
+                    <div className="table-scroll" style={{ marginTop: 8 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>序列</th>
+                            <th>{t(lang, "importColSheetStatus")}</th>
+                            <th>{t(lang, "importColBoardStatus")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.statusChanges.slice(0, 50).map((s) => (
+                            <tr key={s.seq}>
+                              <td>{s.seq}</td>
+                              <td>{s.from}</td>
+                              <td className="muted">{s.to || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {plan.statusChanges.length > 50 && (
+                      <p className="hint">{t(lang, "importStatusMore", plan.statusChanges.length - 50)}</p>
+                    )}
+
+                    <label className="check-row" style={{ marginTop: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={syncStatus}
+                        disabled={busy}
+                        onChange={(e) => setSyncStatus(e.target.checked)}
+                      />
+                      <span>{t(lang, "importSyncStatus")}</span>
+                    </label>
+                    <p className="hint">{t(lang, "importSyncStatusHint")}</p>
                   </>
                 )}
               </>
@@ -959,6 +1056,11 @@ export default function AdminPanel({
           }
         >
           <p>{t(lang, "importConfirmBody", plan.newCases.length, plan.newComments.length)}</p>
+          <p>
+            {syncStatus && plan.statusChanges.length > 0
+              ? t(lang, "importConfirmStatus", plan.statusChanges.length)
+              : t(lang, "importConfirmNoStatus")}
+          </p>
         </Modal>
       )}
 
