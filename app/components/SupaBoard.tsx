@@ -134,6 +134,32 @@ function formatHistoryTimestamp(iso: string): string {
   return formatTimestampUTC8(iso, true);
 }
 
+// YYYY-MM-DD HH:MM:SS in UTC+8, for the update-date cell. cases.update_date is
+// only a date, so a row that changed three times today reads as three
+// identical cells; once there's a recorded change we show when it happened.
+function formatDateTimeUTC8(iso: string): string {
+  const shifted = new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${shifted.getUTCFullYear()}-${p(shifted.getUTCMonth() + 1)}-${p(shifted.getUTCDate())}` +
+    ` ${p(shifted.getUTCHours())}:${p(shifted.getUTCMinutes())}:${p(shifted.getUTCSeconds())}`
+  );
+}
+
+/** The most recent recorded change on a case, or null if there are none. */
+function latestUpdateAt(c: SupaCaseRow): string | null {
+  let latest: string | null = null;
+  const consider = (iso: string) => {
+    if (iso && (latest === null || iso > latest)) latest = iso;
+  };
+  for (const e of c.fieldEdits) consider(e.editedAt);
+  for (const cm of c.comments) {
+    consider(cm.createdAt);
+    for (const ed of cm.edits) consider(ed.editedAt);
+  }
+  return latest;
+}
+
 // --- Draggable/resizable columns (same behavior as CaseBoard.tsx's T1 HO
 // table, just with a column set that varies by board) ---
 type ColumnKey =
@@ -210,7 +236,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   note: 260,
   reply: 260,
   relatedTicket: 130,
-  updateDate: 110,
+  updateDate: 168,
   noteLabel: 140,
   status: 140,
   priority: 90,
@@ -1344,12 +1370,20 @@ export default function SupaBoard({
             historyTag={fieldTag(c, "relatedTicket")}
           />
         );
-      case "updateDate":
+      case "updateDate": {
+        // A case with no recorded change keeps the plain date — there's no
+        // time to show, and inventing one would be worse than the date.
+        const at = latestUpdateAt(c);
         return (
           <td key={colKey}>
-            <RowUpdateTag label={c.updateDate} entries={rowHistory(c)} lang={lang} />
+            <RowUpdateTag
+              label={at ? formatDateTimeUTC8(at) : c.updateDate}
+              entries={rowHistory(c)}
+              lang={lang}
+            />
           </td>
         );
+      }
       case "noteLabel":
         return (
           <LinkCell

@@ -16,12 +16,16 @@ is fast. Each query was simply paying for a round trip to another continent,
 and the visitors are in Hong Kong, so the response crossed the Pacific twice
 more on the way back.
 
-`"regions": ["sin1"]` (Singapore) puts the functions next to the database.
+Pinning the region put the functions in Asia and halved it: `/ho` went from
+3.14 s to 1.67 s, and the "Routed to Washington" line disappeared from the
+logs. The first guess was Singapore; the project is actually in Tokyo
+(`ap-northeast-1`), so `hnd1` is the match — and it happens to be close to the
+Taipei office too.
 
-## If Supabase isn't in Singapore
+## If the database moves
 
-Check **Supabase → Project Settings → General → Region** and set the closest
-Vercel region instead:
+Check **Supabase → Project Settings → General → Region** and set the matching
+Vercel region:
 
 | Supabase region | Vercel region |
 | --- | --- |
