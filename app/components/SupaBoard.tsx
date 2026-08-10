@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import type { SupaBoard, SupaCaseRow, SupaComment } from "@/lib/supabaseCases";
+import type { SupaAttachment, SupaBoard, SupaCaseRow, SupaComment, SupaEdit } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
+import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
 import NewCaseModal from "./NewCaseModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
@@ -36,6 +37,9 @@ const STRINGS = {
   cancel: { zh: "取消", en: "Cancel" },
   editedTag: { zh: "已編輯", en: "edited" },
   editComment: { zh: "編輯", en: "Edit" },
+  // Row-level history entries — what happened, not what it said.
+  commentAdded: { zh: "新增留言", en: "Comment added" },
+  commentEdited: { zh: "編輯留言", en: "Comment edited" },
   commentPlaceholder: { zh: "輸入留言…", en: "Write a comment…" },
   send: { zh: "送出", en: "Send" },
   submitting: { zh: "送出中...", en: "Submitting..." },
@@ -85,6 +89,14 @@ function seqNumber(seq: string): number {
 // this is a small duplicate rather than a shared import).
 function displayNameFromEmail(email: string): string {
   return email.split("@")[0];
+}
+
+function toHistoryEntry(e: SupaEdit): HistoryEntry {
+  return {
+    editor: displayNameFromEmail(e.editorEmail),
+    when: formatTimestampUTC8(e.editedAt),
+    text: e.previousValue,
+  };
 }
 
 // MM/DD HH:MM in UTC+8, matching the T1 HO Sheets board's comment format.
@@ -242,6 +254,8 @@ function ClampedCell({
   lang,
   onSave,
   saving = false,
+  historyTag,
+  attachments,
 }: {
   text: string;
   cellKey: string;
@@ -250,6 +264,8 @@ function ClampedCell({
   lang: Lang;
   onSave?: (next: string) => void;
   saving?: boolean;
+  historyTag?: ReactNode;
+  attachments?: SupaAttachment[];
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -317,9 +333,9 @@ function ClampedCell({
       className={`note-cell${canEdit ? " editable-cell" : ""}`}
       onClick={(e) => {
         if (!canEdit) return;
-        // The show-more toggle is inside this cell; clicking it shouldn't
-        // also drop the cell into edit mode.
-        if ((e.target as HTMLElement).closest(".note-toggle")) return;
+        // The show-more toggle and the （已編輯）hover marker both live inside
+        // this cell; clicking either shouldn't drop it into edit mode.
+        if ((e.target as HTMLElement).closest(".note-toggle, .edited-tag")) return;
         setDraft(text);
         setEditing(true);
       }}
@@ -329,6 +345,16 @@ function ClampedCell({
       ) : (
         canEdit && <span className="cell-placeholder">—</span>
       )}
+      {historyTag}
+      {/* Screenshots attached when the case was created — without these the
+          upload in 新增案件 has nowhere to show up. */}
+      {attachments?.map((a) => (
+        <div key={a.id}>
+          <a className="attach-chip" href={a.url} target="_blank" rel="noopener noreferrer" title={a.fileName}>
+            📎 {a.fileName}
+          </a>
+        </div>
+      ))}
       {isLong && (
         <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
@@ -404,7 +430,13 @@ function CommentThread({
               <div key={entryKey} className="comment">
                 <span className="who">{displayNameFromEmail(c.authorEmail)}</span>{" "}
                 <span className="meta">{formatTimestampUTC8(c.createdAt)}</span>
-                {c.editedAt && <span className="edited-tag">{t(lang, "editedTag")}</span>}
+                {/* Comments edited before the history table existed still get
+                    the marker — there's just nothing to show on hover. */}
+                {c.edits.length > 0 ? (
+                  <EditedTag entries={c.edits.map(toHistoryEntry)} lang={lang} />
+                ) : (
+                  c.editedAt && <span className="edited-tag">{t(lang, "editedTag")}</span>
+                )}
                 {!isEditingThis && canComment && (
                   <button type="button" className="comment-edit-btn" onClick={() => onStartEdit(c.id, c.body)}>
                     {t(lang, "editComment")}
@@ -426,6 +458,20 @@ function CommentThread({
                   <>
                     <br />
                     <span className="comment-text">{linkify(c.body, entryKey)}</span>
+                    {c.attachments.map((a) => (
+                      <span key={a.id}>
+                        <br />
+                        <a
+                          className="attach-chip"
+                          href={a.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={a.fileName}
+                        >
+                          📎 {a.fileName}
+                        </a>
+                      </span>
+                    ))}
                   </>
                 )}
                 {isEditingThis && editError && <div className="comment-error">{editError}</div>}
@@ -483,10 +529,12 @@ function LinkCell({
   label,
   url,
   onEdit,
+  historyTag,
 }: {
   label: string | null;
   url: string | null;
   onEdit?: () => void;
+  historyTag?: ReactNode;
 }) {
   const text = (label ?? "").trim();
   return (
@@ -504,6 +552,7 @@ function LinkCell({
           <span style={{ color: "var(--text-muted)" }}>—</span>
         )}
       </span>
+      {historyTag}
       {onEdit && (
         <button type="button" className="link-edit-btn" onClick={onEdit} aria-label="edit">
           ✎
@@ -683,6 +732,17 @@ export default function SupaBoard({
   };
   const canComment = perms[board === "t1ho" ? "comment.t1ho" : "comment.ho"];
 
+  // The audit row the server just wrote, mirrored into local state so the
+  // （已編輯）marker appears with the edit instead of on the next reload.
+  function newEdit(field: string, previousValue: string): SupaEdit {
+    return {
+      field,
+      previousValue,
+      editorEmail: session?.email ?? "",
+      editedAt: new Date().toISOString(),
+    };
+  }
+
   // --- Categorical cells (click-to-change option badges) ---
   const [fieldSaving, setFieldSaving] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -720,11 +780,21 @@ export default function SupaBoard({
       };
       const patch = { [PATCH_KEY[field]]: value } as Partial<SupaCaseRow>;
       setCases((prev) =>
-        prev.map((row) =>
-          row.id === c.id
-            ? { ...row, ...patch, updateDate: data.case?.update_date ?? row.updateDate }
-            : row
-        )
+        prev.map((row) => {
+          if (row.id !== c.id) return row;
+          const previousValue = String(row[PATCH_KEY[field]] ?? "");
+          return {
+            ...row,
+            ...patch,
+            updateDate: data.case?.update_date ?? row.updateDate,
+            // Mirror the audit row the API just wrote, so the （已編輯）marker
+            // shows up on this edit rather than only after a refresh.
+            fieldEdits:
+              previousValue === value
+                ? row.fieldEdits
+                : [...row.fieldEdits, newEdit(field, previousValue)],
+          };
+        })
       );
     } finally {
       setFieldSaving(null);
@@ -758,17 +828,28 @@ export default function SupaBoard({
       }
       const isTicket = linkTarget.kind === "ticket";
       setCases((prev) =>
-        prev.map((row) =>
-          row.id === linkTarget.caseId
-            ? {
-                ...row,
-                ...(isTicket
-                  ? { relatedTicketLabel: label, relatedTicketUrl: url }
-                  : { noteLabel: label, noteUrl: url }),
-                updateDate: data.case?.update_date ?? row.updateDate,
-              }
-            : row
-        )
+        prev.map((row) => {
+          if (row.id !== linkTarget.caseId) return row;
+          const prevLabel = (isTicket ? row.relatedTicketLabel : row.noteLabel) ?? "";
+          const prevUrl = (isTicket ? row.relatedTicketUrl : row.noteUrl) ?? "";
+          const changed = prevLabel !== (label ?? "") || prevUrl !== (label ? url ?? "" : "");
+          return {
+            ...row,
+            ...(isTicket
+              ? { relatedTicketLabel: label, relatedTicketUrl: url }
+              : { noteLabel: label, noteUrl: url }),
+            updateDate: data.case?.update_date ?? row.updateDate,
+            fieldEdits: changed
+              ? [
+                  ...row.fieldEdits,
+                  newEdit(
+                    isTicket ? "relatedTicket" : "note",
+                    prevUrl ? `${prevLabel} (${prevUrl})` : prevLabel
+                  ),
+                ]
+              : row.fieldEdits,
+          };
+        })
       );
       setLinkTarget(null);
     } finally {
@@ -850,7 +931,17 @@ export default function SupaBoard({
             ? {
                 ...row,
                 comments: row.comments.map((cm) =>
-                  cm.id === commentId ? { ...cm, body: data.comment.body, editedAt: data.comment.edited_at } : cm
+                  cm.id === commentId
+                    ? {
+                        ...cm,
+                        body: data.comment.body,
+                        editedAt: data.comment.edited_at,
+                        edits:
+                          cm.body === data.comment.body
+                            ? cm.edits
+                            : [...cm.edits, { ...newEdit("comment", cm.body) }],
+                      }
+                    : cm
                 ),
               }
             : row
@@ -1033,6 +1124,67 @@ export default function SupaBoard({
     document.addEventListener("mouseup", onUp);
   }
 
+  // --- Edit history (the （已編輯）markers and the update-date hover card) ---
+
+  // Which column heading names each recorded field, so the row-level tooltip
+  // reads "狀態" rather than "status".
+  const FIELD_COLUMN: Record<string, ColumnKey> = {
+    dept: "group",
+    type: "group",
+    class: "classification",
+    status: "status",
+    priority: "priority",
+    issueTag: "issueTag",
+    op: "op",
+    cs: "cs",
+    content: "note",
+    relatedTicket: "relatedTicket",
+    note: "noteLabel",
+  };
+
+  function fieldHistory(c: SupaCaseRow, field: string): HistoryEntry[] {
+    return c.fieldEdits.filter((e) => e.field === field).map(toHistoryEntry);
+  }
+
+  function fieldTag(c: SupaCaseRow, field: string): ReactNode {
+    const entries = fieldHistory(c, field);
+    if (entries.length === 0) return null;
+    return <EditedTag entries={entries} lang={lang} />;
+  }
+
+  // The row's own history: which fields changed and when, plus comments
+  // posted and edited. Deliberately no before/after values — those live on
+  // each field's own marker.
+  function rowHistory(c: SupaCaseRow): HistoryEntry[] {
+    const entries: (HistoryEntry & { at: string })[] = c.fieldEdits.map((e) => {
+      const col = FIELD_COLUMN[e.field];
+      return {
+        editor: displayNameFromEmail(e.editorEmail),
+        when: formatTimestampUTC8(e.editedAt),
+        text: col ? COLUMN_LABELS[col][board][lang] || e.field : e.field,
+        at: e.editedAt,
+      };
+    });
+    for (const cm of c.comments) {
+      entries.push({
+        editor: displayNameFromEmail(cm.authorEmail),
+        when: formatTimestampUTC8(cm.createdAt),
+        text: t(lang, "commentAdded"),
+        at: cm.createdAt,
+      });
+      for (const ed of cm.edits) {
+        entries.push({
+          editor: displayNameFromEmail(ed.editorEmail),
+          when: formatTimestampUTC8(ed.editedAt),
+          text: t(lang, "commentEdited"),
+          at: ed.editedAt,
+        });
+      }
+    }
+    entries.sort((a, b) => a.at.localeCompare(b.at));
+    return entries.map(({ editor, when, text }) => ({ editor, when, text }));
+  }
+
   function renderCell(colKey: ColumnKey, c: SupaCaseRow, rowKey: string): ReactNode {
     switch (colKey) {
       case "seq":
@@ -1050,6 +1202,7 @@ export default function SupaBoard({
               isSubmitting={fieldSaving === `${c.id}-${board === "t1ho" ? "dept" : "type"}`}
               onChange={(next) => saveField(c, board === "t1ho" ? "dept" : "type", next)}
             />
+            {fieldTag(c, board === "t1ho" ? "dept" : "type")}
           </td>
         );
       case "classification":
@@ -1063,6 +1216,7 @@ export default function SupaBoard({
               isSubmitting={fieldSaving === `${c.id}-class`}
               onChange={(next) => saveField(c, "class", next)}
             />
+            {fieldTag(c, "class")}
           </td>
         );
       case "cs":
@@ -1076,6 +1230,7 @@ export default function SupaBoard({
             lang={lang}
             onSave={canEditField("cs") ? (next) => saveField(c, "cs", next) : undefined}
             saving={fieldSaving === `${c.id}-cs`}
+            historyTag={fieldTag(c, "cs")}
           />
         );
       case "op":
@@ -1089,6 +1244,7 @@ export default function SupaBoard({
             lang={lang}
             onSave={canEditField("op") ? (next) => saveField(c, "op", next) : undefined}
             saving={fieldSaving === `${c.id}-op`}
+            historyTag={fieldTag(c, "op")}
           />
         );
       case "note":
@@ -1102,6 +1258,8 @@ export default function SupaBoard({
             lang={lang}
             onSave={canEditField("content") ? (next) => saveField(c, "content", next) : undefined}
             saving={fieldSaving === `${c.id}-content`}
+            historyTag={fieldTag(c, "content")}
+            attachments={c.attachments}
           />
         );
       case "reply":
@@ -1139,13 +1297,24 @@ export default function SupaBoard({
             label={c.relatedTicketLabel}
             url={c.relatedTicketUrl}
             onEdit={perms["edit.link"] ? () => openLinkEditor(c, "ticket") : undefined}
+            historyTag={fieldTag(c, "relatedTicket")}
           />
         );
       case "updateDate":
-        return <td key={colKey}>{c.updateDate}</td>;
+        return (
+          <td key={colKey}>
+            <RowUpdateTag label={c.updateDate} entries={rowHistory(c)} lang={lang} />
+          </td>
+        );
       case "noteLabel":
         return (
-          <LinkCell key={colKey} label={c.noteLabel} url={c.noteUrl} onEdit={perms["edit.link"] ? () => openLinkEditor(c, "note") : undefined} />
+          <LinkCell
+            key={colKey}
+            label={c.noteLabel}
+            url={c.noteUrl}
+            onEdit={perms["edit.link"] ? () => openLinkEditor(c, "note") : undefined}
+            historyTag={fieldTag(c, "note")}
+          />
         );
       case "status":
         return (
@@ -1157,6 +1326,7 @@ export default function SupaBoard({
               isSubmitting={fieldSaving === `${c.id}-status`}
               onChange={(next) => saveField(c, "status", next)}
             />
+            {fieldTag(c, "status")}
           </td>
         );
       case "priority":
@@ -1169,6 +1339,7 @@ export default function SupaBoard({
               isSubmitting={fieldSaving === `${c.id}-priority`}
               onChange={(next) => saveField(c, "priority", next)}
             />
+            {fieldTag(c, "priority")}
           </td>
         );
       case "issueTag":
@@ -1182,6 +1353,7 @@ export default function SupaBoard({
               isSubmitting={fieldSaving === `${c.id}-issueTag`}
               onChange={(next) => saveField(c, "issueTag", next)}
             />
+            {fieldTag(c, "issueTag")}
           </td>
         );
     }

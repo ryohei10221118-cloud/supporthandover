@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
+import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,20 @@ export async function POST(req: Request) {
 
   try {
     const supabase = getSupabaseClient();
+
+    // What the cell said before, for the （已編輯）marker's history tooltip.
+    const { data: before, error: beforeError } = await supabase
+      .from("cases")
+      .select(`${columns.label}, ${columns.url}`)
+      .eq("id", caseId)
+      .maybeSingle<Record<string, string | null>>();
+    if (beforeError) throw new Error(beforeError.message);
+    if (!before) {
+      return NextResponse.json({ error: "找不到這筆案件" }, { status: 404 });
+    }
+    const previousValue = before[columns.label] ?? "";
+    const previousUrl = before[columns.url] ?? "";
+
     const { data: updated, error } = await supabase
       .from("cases")
       .update({
@@ -60,6 +75,22 @@ export async function POST(req: Request) {
     if (error) throw new Error(error.message);
     if (!updated) {
       return NextResponse.json({ error: "找不到這筆案件" }, { status: 404 });
+    }
+
+    const newLabel = label || "";
+    const newUrl = label ? url || "" : "";
+    if (previousValue !== newLabel || previousUrl !== newUrl) {
+      const editedBy = await resolveSupabaseUserId(role.email);
+      const { error: historyError } = await supabase.from("field_edit_history").insert({
+        case_id: caseId,
+        // The board's own field key, so the tooltip can label it the same way
+        // the column header does.
+        field_name: kind === "ticket" ? "relatedTicket" : "note",
+        previous_value: previousUrl ? `${previousValue} (${previousUrl})` : previousValue,
+        edited_by: editedBy,
+        edited_at: new Date().toISOString(),
+      });
+      if (historyError) console.error("field_edit_history insert failed", historyError.message);
     }
 
     return NextResponse.json({ ok: true, case: updated });

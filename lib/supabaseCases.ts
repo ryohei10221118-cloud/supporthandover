@@ -12,12 +12,34 @@ const PAGE_SIZE = 1000;
 
 export type SupaBoard = "t1ho" | "ho";
 
+const ATTACHMENT_BUCKET = "case-attachments";
+
+export interface SupaAttachment {
+  id: string;
+  commentId: string | null;
+  fileName: string;
+  // Either the public URL of the uploaded file or, for oversize files nobody
+  // uploaded, the external link the user pasted instead.
+  url: string;
+}
+
+// One entry in a field's or comment's "先前內容" tooltip: what it used to
+// say, who changed it and when.
+export interface SupaEdit {
+  field: string; // the board's field key ("status", "op", …); "comment" for comment edits
+  previousValue: string;
+  editorEmail: string;
+  editedAt: string;
+}
+
 export interface SupaComment {
   id: string;
   body: string; // legacy-migration prefix stripped
   authorEmail: string;
   createdAt: string;
   editedAt: string | null;
+  edits: SupaEdit[]; // oldest first
+  attachments: SupaAttachment[];
 }
 
 export interface SupaCaseRow {
@@ -43,6 +65,10 @@ export interface SupaCaseRow {
   issueTag: string | null;
   updateDate: string;
   comments: SupaComment[]; // oldest first
+  // Screenshots added when the case was created — the ones tied to a comment
+  // live on that comment instead.
+  attachments: SupaAttachment[];
+  fieldEdits: SupaEdit[]; // oldest first, across every editable cell
   latestNote: string; // comments[comments.length-1]'s body, or "" — kept for the board summary preview cell
   isCompleted: boolean;
   isOverdue: boolean;
@@ -90,6 +116,30 @@ interface CommentDbRow {
   body: string;
   created_at: string;
   edited_at: string | null;
+}
+
+interface AttachmentDbRow {
+  id: string;
+  case_id: string | null;
+  comment_id: string | null;
+  file_name: string;
+  storage_path: string | null;
+  external_url: string | null;
+}
+
+interface FieldHistoryDbRow {
+  case_id: string;
+  field_name: string;
+  previous_value: string | null;
+  edited_by: string;
+  edited_at: string;
+}
+
+interface CommentHistoryDbRow {
+  comment_id: string;
+  previous_body: string;
+  edited_by: string;
+  edited_at: string;
 }
 
 async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
@@ -155,15 +205,126 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
     commentRows.push(...(data ?? []));
   }
 
-  const authorIds = Array.from(new Set(commentRows.map((c) => c.author_id)));
+  // Screenshots, and the "先前內容" audit trail behind the （已編輯）markers.
+  // These tables only gain rows when someone actually edits something, so
+  // they stay far smaller than cases/comments; they're read the same chunked
+  // way for the same reason.
+  const commentIds = commentRows.map((c) => c.id);
+  const commentIdChunks: string[][] = [];
+  for (let i = 0; i < commentIds.length; i += CHUNK) commentIdChunks.push(commentIds.slice(i, i + CHUNK));
+
+  const [attachmentPages, fieldHistoryPages, commentHistoryPages] = await Promise.all([
+    Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("attachments")
+          .select("id, case_id, comment_id, file_name, storage_path, external_url")
+          .in("case_id", chunk)
+          .order("uploaded_at", { ascending: true })
+          .returns<AttachmentDbRow[]>()
+      )
+    ),
+    Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("field_edit_history")
+          .select("case_id, field_name, previous_value, edited_by, edited_at")
+          .in("case_id", chunk)
+          .order("edited_at", { ascending: true })
+          .returns<FieldHistoryDbRow[]>()
+      )
+    ),
+    Promise.all(
+      commentIdChunks.map((chunk) =>
+        supabase
+          .from("comment_edit_history")
+          .select("comment_id, previous_body, edited_by, edited_at")
+          .in("comment_id", chunk)
+          .order("edited_at", { ascending: true })
+          .returns<CommentHistoryDbRow[]>()
+      )
+    ),
+  ]);
+
+  const attachmentRows: AttachmentDbRow[] = [];
+  for (const { data, error } of attachmentPages) {
+    if (error) throw new Error(`Supabase 讀取 attachments 失敗: ${error.message}`);
+    attachmentRows.push(...(data ?? []));
+  }
+  const fieldHistoryRows: FieldHistoryDbRow[] = [];
+  for (const { data, error } of fieldHistoryPages) {
+    if (error) throw new Error(`Supabase 讀取 field_edit_history 失敗: ${error.message}`);
+    fieldHistoryRows.push(...(data ?? []));
+  }
+  const commentHistoryRows: CommentHistoryDbRow[] = [];
+  for (const { data, error } of commentHistoryPages) {
+    if (error) throw new Error(`Supabase 讀取 comment_edit_history 失敗: ${error.message}`);
+    commentHistoryRows.push(...(data ?? []));
+  }
+
+  // Comment authors and editors are the same kind of thing — one lookup.
+  const userIds = Array.from(
+    new Set([
+      ...commentRows.map((c) => c.author_id),
+      ...fieldHistoryRows.map((h) => h.edited_by),
+      ...commentHistoryRows.map((h) => h.edited_by),
+    ])
+  );
   const authorEmailById = new Map<string, string>();
   const AUTHOR_CHUNK = 300;
-  for (let i = 0; i < authorIds.length; i += AUTHOR_CHUNK) {
-    const chunk = authorIds.slice(i, i + AUTHOR_CHUNK);
+  for (let i = 0; i < userIds.length; i += AUTHOR_CHUNK) {
+    const chunk = userIds.slice(i, i + AUTHOR_CHUNK);
     if (chunk.length === 0) continue;
     const { data, error } = await supabase.from("users").select("id, email").in("id", chunk).returns<{ id: string; email: string }[]>();
     if (error) throw new Error(`Supabase 讀取 users 失敗: ${error.message}`);
     for (const u of data ?? []) authorEmailById.set(u.id, u.email);
+  }
+
+  function attachmentUrl(row: AttachmentDbRow): string {
+    if (row.external_url) return row.external_url;
+    if (!row.storage_path) return "";
+    return supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(row.storage_path).data.publicUrl;
+  }
+
+  const attachmentsByCase = new Map<string, SupaAttachment[]>();
+  const attachmentsByComment = new Map<string, SupaAttachment[]>();
+  for (const a of attachmentRows) {
+    const url = attachmentUrl(a);
+    if (!url) continue;
+    const item: SupaAttachment = { id: a.id, commentId: a.comment_id, fileName: a.file_name, url };
+    if (a.comment_id) {
+      const list = attachmentsByComment.get(a.comment_id) ?? [];
+      list.push(item);
+      attachmentsByComment.set(a.comment_id, list);
+    } else if (a.case_id) {
+      const list = attachmentsByCase.get(a.case_id) ?? [];
+      list.push(item);
+      attachmentsByCase.set(a.case_id, list);
+    }
+  }
+
+  const fieldEditsByCase = new Map<string, SupaEdit[]>();
+  for (const h of fieldHistoryRows) {
+    const list = fieldEditsByCase.get(h.case_id) ?? [];
+    list.push({
+      field: h.field_name,
+      previousValue: h.previous_value ?? "",
+      editorEmail: authorEmailById.get(h.edited_by) ?? "unknown",
+      editedAt: h.edited_at,
+    });
+    fieldEditsByCase.set(h.case_id, list);
+  }
+
+  const editsByComment = new Map<string, SupaEdit[]>();
+  for (const h of commentHistoryRows) {
+    const list = editsByComment.get(h.comment_id) ?? [];
+    list.push({
+      field: "comment",
+      previousValue: h.previous_body.replace(LEGACY_PREFIX, ""),
+      editorEmail: authorEmailById.get(h.edited_by) ?? "unknown",
+      editedAt: h.edited_at,
+    });
+    editsByComment.set(h.comment_id, list);
   }
 
   const commentsByCase = new Map<string, SupaComment[]>();
@@ -175,6 +336,8 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
       authorEmail: authorEmailById.get(c.author_id) ?? "unknown",
       createdAt: c.created_at,
       editedAt: c.edited_at,
+      edits: editsByComment.get(c.id) ?? [],
+      attachments: attachmentsByComment.get(c.id) ?? [],
     });
     commentsByCase.set(c.case_id, list);
   }
@@ -203,6 +366,8 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
       issueTag: r.issue_tag,
       updateDate: r.update_date,
       comments,
+      attachments: attachmentsByCase.get(r.id) ?? [],
+      fieldEdits: fieldEditsByCase.get(r.id) ?? [],
       latestNote: comments.length > 0 ? comments[comments.length - 1].body : "",
       isCompleted: completed,
       isOverdue: !completed && daysOpen !== null && daysOpen > OVERDUE_DAYS,

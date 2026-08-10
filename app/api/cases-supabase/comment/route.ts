@@ -65,6 +65,8 @@ export async function POST(req: Request) {
         authorEmail: role.email,
         createdAt: inserted.created_at,
         editedAt: null,
+        edits: [],
+        attachments: [],
       },
     });
   } catch (err) {

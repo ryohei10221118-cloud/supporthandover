@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
+import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 import { FIELD_PERMISSION } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
@@ -72,9 +73,9 @@ export async function POST(req: Request) {
     // caller claims, so a t1ho-only field can't be written onto an HO row.
     const { data: existing, error: readError } = await supabase
       .from("cases")
-      .select("id, board")
+      .select(`id, board, ${column}`)
       .eq("id", caseId)
-      .maybeSingle<{ id: string; board: string }>();
+      .maybeSingle<Record<string, string | null>>();
     if (readError) throw new Error(readError.message);
     if (!existing) {
       return NextResponse.json({ error: "找不到這筆案件" }, { status: 404 });
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
     if (existing.board !== board) {
       return NextResponse.json({ error: "案件與看板不符" }, { status: 400 });
     }
+    const previousValue = existing[column] ?? "";
 
     const updateDate = new Date().toISOString().slice(0, 10);
     const { data: updated, error } = await supabase
@@ -91,6 +93,22 @@ export async function POST(req: Request) {
       .select(`id, ${column}, update_date`)
       .maybeSingle();
     if (error) throw new Error(error.message);
+
+    // Keep the value being replaced so the cell's （已編輯）marker can show
+    // what it used to say, and who changed it.
+    if (previousValue !== value) {
+      const editedBy = await resolveSupabaseUserId(role.email);
+      const { error: historyError } = await supabase.from("field_edit_history").insert({
+        case_id: caseId,
+        field_name: field,
+        previous_value: previousValue,
+        edited_by: editedBy,
+        edited_at: new Date().toISOString(),
+      });
+      // The write itself already landed; losing the audit row shouldn't fail
+      // the request, but it shouldn't pass silently either.
+      if (historyError) console.error("field_edit_history insert failed", historyError.message);
+    }
 
     return NextResponse.json({ ok: true, case: updated });
   } catch (err) {

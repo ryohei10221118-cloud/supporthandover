@@ -1900,6 +1900,81 @@ tbody tr:nth-child(even) {
   color: var(--text-muted);
   font-style: italic;
   margin-left: 6px;
+  cursor: help;
+}
+
+/* The update-date cell doubles as a hover target once the row has an edit
+   history, hence the dotted underline. */
+.row-update-tag {
+  position: relative;
+  cursor: default;
+  border-bottom: 1px dotted var(--text-muted);
+}
+
+.row-update-label {
+  pointer-events: none;
+}
+
+.edit-history-tip {
+  position: fixed;
+  z-index: 15;
+  width: 260px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.55;
+  padding: 9px 11px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+  /* Nested inside a td (white-space: nowrap), and position: fixed only
+     escapes layout, not inherited CSS — without resetting this here the
+     value text runs off in one line and clips. */
+  white-space: normal;
+  word-break: break-word;
+}
+
+.eht-title {
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.eht-item {
+  margin-bottom: 6px;
+}
+
+.eht-item:last-child {
+  margin-bottom: 0;
+}
+
+.eht-meta {
+  font-size: 0.66rem;
+  opacity: 0.75;
+  margin-bottom: 2px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  font-size: 0.72rem;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-top: 2px;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-chip:hover {
+  text-decoration: underline;
 }
 
 /* The write form: the trigger sits pinned to the cell's top-right so an
