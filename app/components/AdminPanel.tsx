@@ -36,7 +36,7 @@ const STRINGS = {
   importBoard: { zh: "看板", en: "Board" },
   importPreview: { zh: "試算", en: "Preview" },
   importHoNote: {
-    zh: "HO 的 Sheet 把追蹤狀況寫在同一個內容欄位裡，沒有獨立的回覆欄，所以 HO 只會補案件、不會產生留言。",
+    zh: "HO 的分頁把追蹤狀況寫在同一個內容欄位裡，沒有獨立的回覆欄，所以 HO 只會補案件、不會產生留言。",
     en: "The HO sheet keeps its tracking updates inside the content cell rather than a column of its own, so HO brings across cases only, no comments.",
   },
   importRun: { zh: "執行匯入", en: "Run import" },

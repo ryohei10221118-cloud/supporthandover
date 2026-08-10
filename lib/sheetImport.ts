@@ -27,14 +27,20 @@ export interface SheetSource {
   gid?: string;
 }
 
-/** T1 HO is the sheet the board itself used to read; HO needs its own. */
+/**
+ * Where each board's sheet lives. In practice both boards are tabs of the
+ * same spreadsheet, so HO_SHEET_ID is optional and falls back to SHEET_ID —
+ * but HO_SHEET_GID is not: without a tab id the reader takes the first tab,
+ * which is T1 HO's, and would quietly import from the wrong place.
+ */
 export function sheetSourceFor(board: SupaBoard): SheetSource | null {
   if (board === "t1ho") {
     const id = process.env.SHEET_ID;
     return id ? { spreadsheetId: id, gid: process.env.SHEET_GID } : null;
   }
-  const id = process.env.HO_SHEET_ID;
-  return id ? { spreadsheetId: id, gid: process.env.HO_SHEET_GID } : null;
+  const id = process.env.HO_SHEET_ID ?? process.env.SHEET_ID;
+  const gid = process.env.HO_SHEET_GID;
+  return id && gid ? { spreadsheetId: id, gid } : null;
 }
 
 /** One sheet row, already mapped onto the columns a case has. */
@@ -117,7 +123,7 @@ async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
     throw new Error(
       board === "t1ho"
         ? "找不到 T1 HO 的 Sheet 設定（SHEET_ID）。"
-        : "找不到 HO 的 Sheet 設定，請在 Vercel 加上 HO_SHEET_ID（以及分頁的 HO_SHEET_GID）。"
+        : "找不到 HO 的分頁設定。HO 與 T1 HO 若在同一份試算表，只要在 Vercel 加上 HO_SHEET_GID（HO 分頁網址結尾 gid= 後面的數字）；在不同檔案才需要另外加 HO_SHEET_ID。"
     );
   }
   const values = await fetchSheetValues(source.spreadsheetId, source.gid);
