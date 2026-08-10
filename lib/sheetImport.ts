@@ -68,6 +68,10 @@ export interface ImportPlanCase {
   date: string;
   status: string;
   content: string;
+  // Shown in the preview so a column that mapped to the wrong place — or to
+  // nothing — is visible before anything is written, not after.
+  who: string;
+  category: string;
 }
 
 export interface ImportPlanComment {
@@ -243,7 +247,14 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
 
     const match = existing.bySeq.get(row.seq);
     if (!match) {
-      plan.newCases.push({ seq: row.seq, date: row.createDate, status: row.status, content: row.content });
+      plan.newCases.push({
+        seq: row.seq,
+        date: row.createDate,
+        status: row.status,
+        content: row.content,
+        who: [row.cs, row.op].filter(Boolean).join(" / "),
+        category: [row.dept, row.hoType, row.hoClass].filter(Boolean).join(" / "),
+      });
       if (row.reply) plan.newComments.push({ seq: row.seq, body: row.reply });
       continue;
     }

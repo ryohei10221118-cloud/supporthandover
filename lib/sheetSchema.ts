@@ -8,15 +8,18 @@ export type ColumnKey = keyof Omit<
 // Header keywords we look for in the sheet's header row. Position fallback
 // covers the "note" column, whose header text sits under the sheet's merged
 // instruction banner and isn't reliably readable as plain text.
+// Both simplified and traditional forms are listed: the sheet mixes them
+// (the header reads 部門 while the instructions above it are in simplified),
+// and a keyword that doesn't match leaves its column silently unmapped.
 export const HEADER_KEYWORDS: Record<ColumnKey, string[]> = {
   seq: ["序列"],
   date: ["日期"],
   op: ["op"],
-  note: ["问题追踪", "追踪"],
-  department: ["部门"],
+  note: ["问题", "問題", "追踪", "追蹤"],
+  department: ["部门", "部門"],
   cs: ["cs"],
-  reply: ["回答内容", "回答"],
-  status: ["status"],
+  reply: ["回答内容", "回答內容", "回答"],
+  status: ["status", "狀態", "状态"],
   issue: ["issue"],
 };
 

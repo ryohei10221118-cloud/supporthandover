@@ -50,6 +50,12 @@ const STRINGS = {
     en: (c: number, m: number) => `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added.`,
   },
   importSample: { zh: "將新增的案件（前 20 筆）", en: "Cases to add (first 20)" },
+  importSampleHint: {
+    zh: "對照 Sheet 檢查每一欄是不是都對到正確的位置 —— 有欄位整排都是「—」，代表那一欄的表頭沒被認出來，先別匯入，告訴我。",
+    en: "Check each column against the sheet. A column showing “—” all the way down means its header wasn't recognised — don't import, tell me.",
+  },
+  importColWho: { zh: "CS / OP", en: "CS / OP" },
+  importColCategory: { zh: "部門 / 分類", en: "Dept / category" },
   importConfirmTitle: { zh: "確定要匯入嗎？", en: "Run the import?" },
   importConfirmBody: {
     zh: (c: number, m: number) => `會新增 ${c.toLocaleString()} 筆案件與 ${m.toLocaleString()} 則回覆。既有資料不會被更動。`,
@@ -793,6 +799,7 @@ export default function AdminPanel({
                     <p className="hint" style={{ marginTop: 16, fontWeight: 650 }}>
                       {t(lang, "importSample")}
                     </p>
+                    <p className="hint">{t(lang, "importSampleHint")}</p>
                     <div className="table-scroll" style={{ marginTop: 8 }}>
                       <table>
                         <thead>
@@ -800,6 +807,8 @@ export default function AdminPanel({
                             <th>序列</th>
                             <th>日期</th>
                             <th>狀態</th>
+                            <th>{t(lang, "importColWho")}</th>
+                            <th>{t(lang, "importColCategory")}</th>
                             <th>內容</th>
                           </tr>
                         </thead>
@@ -809,6 +818,8 @@ export default function AdminPanel({
                               <td>{c.seq}</td>
                               <td className="muted">{c.date}</td>
                               <td className="muted">{c.status}</td>
+                              <td className="muted">{c.who || "—"}</td>
+                              <td className="muted">{c.category || "—"}</td>
                               <td className="muted">{c.content.slice(0, 60)}</td>
                             </tr>
                           ))}
