@@ -1,11 +1,13 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { getSupabaseClient } from "./supabaseClient";
-import { readSessionToken, SESSION_COOKIE } from "./auth";
+import { displayNameFromEmail, readSessionToken, SESSION_COOKIE } from "./auth";
 import {
   fallbackRole,
   isPermissionKey,
   noPermissions,
+  type ClientSession,
   type Permissions,
   type SessionRole,
 } from "./permissions";
@@ -78,8 +80,13 @@ export async function fetchAllRolePermissions(): Promise<Record<string, Permissi
  * The signed-in user's role and permissions. This is the authority — API
  * routes call it to decide whether a write is allowed, so the client can
  * never grant itself anything by lying about its role.
+ *
+ * Wrapped in React's cache() so the layout and the page it renders share a
+ * single lookup instead of each paying for the round trip. The cache lives
+ * for one request only, so a role change still takes effect on the next
+ * page load.
  */
-export async function getSessionRole(): Promise<SessionRole | null> {
+export const getSessionRole = cache(async function getSessionRole(): Promise<SessionRole | null> {
   const cookieStore = await cookies();
   const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
   if (!session) return null;
@@ -128,4 +135,21 @@ export async function getSessionRole(): Promise<SessionRole | null> {
     // user would otherwise have.
     return fallbackRole(session.email);
   }
+});
+
+/**
+ * The same thing in the shape client components take as a prop. Server
+ * components call this and pass it down so permission-gated UI is correct on
+ * the very first paint instead of appearing a beat later.
+ */
+export async function getClientSession(): Promise<ClientSession | null> {
+  const role = await getSessionRole();
+  if (!role) return null;
+  return {
+    email: role.email,
+    name: displayNameFromEmail(role.email),
+    roleKey: role.roleKey,
+    roleLabel: role.label,
+    permissions: role.permissions,
+  };
 }

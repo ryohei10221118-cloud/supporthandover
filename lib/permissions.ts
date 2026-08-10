@@ -56,6 +56,18 @@ export interface SessionRole {
   permissions: Permissions;
 }
 
+// What the server hands the client components on first render. Passing this
+// down as a prop instead of letting the client fetch /api/auth/me after
+// mount is what keeps permission-gated UI (新增案件, the editable cells, the
+// nav) from popping in a moment after the page appears.
+export interface ClientSession {
+  email: string;
+  name: string;
+  roleKey: RoleKey;
+  roleLabel: string;
+  permissions: Permissions;
+}
+
 // Fallback for a signed-in user we can't resolve a role for — safest is to
 // let them read and comment on T1 HO, nothing else.
 export function fallbackRole(email: string): SessionRole {

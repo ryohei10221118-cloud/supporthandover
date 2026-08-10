@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemePicker from "./ThemePicker";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
-import type { Permissions } from "@/lib/permissions";
+import { getRolePreviewKey, setRolePreview } from "@/lib/rolePreview";
+import type { ClientSession, Permissions } from "@/lib/permissions";
 
 type Lang = "zh" | "en";
 
@@ -90,14 +91,22 @@ function BrandMark() {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({
+  session,
+  rolePermissions,
+}: {
+  session: ClientSession | null;
+  rolePermissions: Record<string, Permissions>;
+}) {
   const pathname = usePathname();
   const [lang, setLang] = useState<Lang>("zh");
-  const [me, setMe] = useState<{ email: string; name: string; role: string; roleLabel: string } | null>(null);
+  const me = session ? { ...session, role: session.roleKey } : null;
+  const rolePerms = rolePermissions;
+  const myPerms = session?.permissions ?? null;
   // Admins can preview the app as another role; anyone else sees their own.
+  // Seeded from the module-scope value so switching pages mid-preview keeps
+  // the previewed role instead of snapping back to Admin.
   const [previewRole, setPreviewRole] = useState<string | null>(null);
-  const [rolePerms, setRolePerms] = useState<Record<string, Permissions>>({});
-  const [myPerms, setMyPerms] = useState<Permissions | null>(null);
 
   useEffect(() => {
     try {
@@ -106,19 +115,7 @@ export default function Sidebar() {
     } catch {
       // ignore
     }
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        setMe(d.email ? { email: d.email, name: d.name, role: d.role, roleLabel: d.roleLabel } : null);
-        if (d.permissions) setMyPerms(d.permissions as Permissions);
-        if (d.role === "admin") {
-          fetch("/api/roles")
-            .then((r) => r.json())
-            .then((rd) => setRolePerms(rd.permissions ?? {}))
-            .catch(() => {});
-        }
-      })
-      .catch(() => {});
+    setPreviewRole(getRolePreviewKey());
   }, []);
 
   function toggleLang() {
@@ -135,6 +132,7 @@ export default function Sidebar() {
   function previewAs(role: string | null) {
     setPreviewRole(role);
     const detail = role && rolePerms[role] ? rolePerms[role] : null;
+    setRolePreview(role, detail);
     window.dispatchEvent(new CustomEvent(ROLE_PREVIEW_EVENT, { detail }));
   }
 

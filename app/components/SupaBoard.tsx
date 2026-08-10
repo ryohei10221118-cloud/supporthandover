@@ -8,7 +8,8 @@ import NewCaseModal from "./NewCaseModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
 import OptionBadge, { type BadgeOption } from "./OptionBadge";
 import { FIELD_LIST_KEY, type OptionLists } from "@/lib/optionLists";
-import { FIELD_PERMISSION, noPermissions, type Permissions } from "@/lib/permissions";
+import { FIELD_PERMISSION, noPermissions, type ClientSession, type Permissions } from "@/lib/permissions";
+import { getRolePreviewPermissions } from "@/lib/rolePreview";
 
 // --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
@@ -576,11 +577,13 @@ export default function SupaBoard({
   initialCases,
   initialError,
   optionLists,
+  session,
 }: {
   board: SupaBoard;
   initialCases: SupaCaseRow[];
   initialError: string | null;
   optionLists: OptionLists;
+  session: ClientSession | null;
 }) {
   const [cases, setCases] = useState(initialCases);
   const [error, setError] = useState(initialError);
@@ -651,24 +654,21 @@ export default function SupaBoard({
   }, [openCommentKey]);
 
   // --- Signed-in user and what they're allowed to change ---
+  // Handed down from the server render. Fetching this after mount is what
+  // made 新增案件 and the editable cells appear a beat after the rest of the
+  // board on every page switch.
   const [newCaseOpen, setNewCaseOpen] = useState(false);
-  const [me, setMe] = useState<string>("");
-  const [permissions, setPermissions] = useState<Permissions>(noPermissions());
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        setMe(d.name ?? "");
-        if (d.permissions) setPermissions(d.permissions as Permissions);
-      })
-      .catch(() => {});
-  }, []);
+  const me = session?.name ?? "";
+  const permissions = session?.permissions ?? noPermissions();
 
   // Admins can preview the board as another role. This only changes what
   // this browser shows — the server still decides what it will accept.
   const [previewPerms, setPreviewPerms] = useState<Permissions | null>(null);
   useEffect(() => {
+    // The board remounts on every page switch while the sidebar (and its
+    // preview switcher) does not, so pick the current preview back up rather
+    // than waiting for the next click on the switcher.
+    setPreviewPerms(getRolePreviewPermissions());
     function handlePreview(e: Event) {
       setPreviewPerms((e as CustomEvent<Permissions | null>).detail);
     }

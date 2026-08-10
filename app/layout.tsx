@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "./components/Sidebar";
+import { getClientSession, fetchAllRolePermissions } from "@/lib/permissionsServer";
+import type { Permissions } from "@/lib/permissions";
 
 export const metadata: Metadata = {
   title: "T1HO case board",
@@ -89,7 +91,17 @@ const THEME_INIT_SCRIPT = `(function () {
   } catch (e) {}
 })();`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Resolved here rather than fetched by the sidebar after mount, so the nav
+  // and the user pill are already right in the first paint. getSessionRole is
+  // request-cached, so the page inside pays nothing for asking again.
+  const session = await getClientSession();
+  // Only admins get the 預覽身份 switcher, so only they need the matrix.
+  let rolePermissions: Record<string, Permissions> = {};
+  if (session?.roleKey === "admin") {
+    rolePermissions = await fetchAllRolePermissions().catch(() => ({}));
+  }
+
   return (
     // The theme-init script below intentionally sets style/data-theme
     // attributes on this element before React hydrates, which would
@@ -99,7 +111,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <div className="app">
-          <Sidebar />
+          <Sidebar session={session} rolePermissions={rolePermissions} />
           <div className="app-content">
             <svg className="dotfield" viewBox="0 0 47 47" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <circle cx="25" cy="25" r="1.849" fill="var(--accent)" />
