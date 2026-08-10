@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "./supabaseClient";
 import { daysSince } from "./cases";
+import { fetchClosedStatuses } from "./statusRules";
 
 // Supabase/PostgREST caps a single response at 1000 rows by default (the
 // project's db-max-rows setting) — anything past that is silently dropped,
@@ -75,28 +76,13 @@ export interface SupaCaseRow {
   daysOpen: number | null;
 }
 
-/**
- * Which statuses mean "nothing left to do on this board", checked against the
- * statuses actually present in the data rather than guessed from a legend:
- *
- * - t1ho "Move to HO": the case has been handed to the HO board, which tracks
- *   it from there. Counting it as open here too would have the same piece of
- *   work pending on two boards at once.
- * - ho "Closed": plainly finished, and t1ho already treated it that way — it
- *   was simply missing from this list.
- * - ho "Note" / "Procedure": not progress states at all but kinds of entry —
- *   a reference note isn't work waiting on someone. Between them they were
- *   808 of HO's 865 supposedly-pending cases.
- *
- * A blank status stays "not done": it needs someone to look at it.
- */
-const T1HO_COMPLETED = new Set(["replied", "closed", "move to ho"]);
-const HO_COMPLETED = new Set(["done", "closed for us", "closed", "note", "procedure"]);
 const OVERDUE_DAYS = 3;
 
-function isCompleted(board: SupaBoard, status: string): boolean {
-  const key = status.trim().toLowerCase();
-  return board === "t1ho" ? T1HO_COMPLETED.has(key) : HO_COMPLETED.has(key);
+// Which statuses mean "finished" is a setting now, edited in 管理後台 →
+// 結案狀態 (see lib/statusRules.ts). A blank status is never in the set, so
+// it stays open — it needs someone to look at it.
+function isCompletedWith(closed: Set<string>, status: string): boolean {
+  return closed.has(status.trim().toLowerCase());
 }
 
 const LEGACY_PREFIX = /^\[搬遷自舊 Sheet\]\n?/;
@@ -240,12 +226,16 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
   // Counted first so the pages can be fetched at once — walking them one at a
   // time was three sequential round trips on a board this size — and ordered
   // by the primary key, which needs no sort.
-  const { count, error: countError } = await supabase
-    .from("cases")
-    .select("id", { count: "exact", head: true })
-    .eq("board", board)
-    .eq("archived", false);
+  const [{ count, error: countError }, closedStatuses] = await Promise.all([
+    supabase
+      .from("cases")
+      .select("id", { count: "exact", head: true })
+      .eq("board", board)
+      .eq("archived", false),
+    fetchClosedStatuses(),
+  ]);
   if (countError) throw new Error(`Supabase 讀取 cases 失敗: ${countError.message}`);
+  const closed = closedStatuses[board];
 
   const totalCount = count ?? 0;
   if (totalCount === 0) return { cases: [], totalCount: 0, scope, cutoff: null };
@@ -279,7 +269,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
   const wanted =
     cutoff === null
       ? index
-      : index.filter((r) => r.create_date >= cutoff || !isCompleted(board, r.status ?? ""));
+      : index.filter((r) => r.create_date >= cutoff || !isCompletedWith(closed, r.status ?? ""));
 
   const wantedIds = wanted.map((r) => r.id);
   const idChunks: string[][] = [];
@@ -455,7 +445,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
 
   const cases = caseRows.map((r) => {
     const daysOpen = daysSince(r.create_date);
-    const completed = isCompleted(board, r.status);
+    const completed = isCompletedWith(closed, r.status);
     const comments = commentsByCase.get(r.id) ?? [];
     return {
       id: r.id,

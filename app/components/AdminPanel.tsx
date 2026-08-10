@@ -11,14 +11,35 @@ import {
 } from "@/lib/permissions";
 import type { AdminUserRow, RoleRow } from "@/lib/permissionsServer";
 import type { ArchiveStatus } from "@/lib/archive";
+import { STATUS_LIST_KEY, type StatusRuleRow } from "@/lib/statusRulesShared";
 
 type Lang = "zh" | "en";
-type Tab = "roles" | "permissions" | "archive";
+type Tab = "roles" | "permissions" | "status" | "archive";
 
 const STRINGS = {
   navRoles: { zh: "角色管理", en: "Roles" },
   navPerms: { zh: "權限設定", en: "Permissions" },
   navArchive: { zh: "案件封存", en: "Archive" },
+  navStatus: { zh: "結案狀態", en: "Closed statuses" },
+
+  statusTitle: { zh: "哪些狀態算結案", en: "Which statuses count as finished" },
+  statusHint: {
+    zh: "勾起來的狀態代表案件已經處理完，不再算「待追蹤」或「逾期」，看板預設也不會把這種舊案件載進來。沒勾的一律視為還在進行中。",
+    en: "A ticked status means the case is done: it stops counting as pending or overdue, and old cases with it are no longer force-loaded onto the board. Anything unticked counts as still in progress.",
+  },
+  statusNote: {
+    zh: "這裡只列「選項管理」裡的狀態選項。之後新增狀態時，記得回來勾一次，否則它會被當成未結案。",
+    en: "Only statuses from 選項管理 appear here. When you add a status later, come back and tick it — otherwise it counts as unfinished.",
+  },
+  statusColClosed: { zh: "算結案", en: "Finished" },
+  statusColName: { zh: "狀態", en: "Status" },
+  statusColCases: { zh: "案件數", en: "Cases" },
+  statusUnknownTitle: { zh: "案件在用、但不在選項清單裡的狀態", en: "Statuses in use but missing from the option list" },
+  statusUnknownHint: {
+    zh: "這些狀態沒有對應的選項，因此無法在這裡設定，一律算未結案。要管理它們請先到「選項管理」把選項加回去。",
+    en: "These have no option row, so they can't be configured here and always count as unfinished. Add them back in 選項管理 to manage them.",
+  },
+  statusEmpty: { zh: "還沒有狀態選項。", en: "No status options yet." },
 
   rolesNoteA: { zh: "未列在下方名單的登入者，預設是 ", en: "Anyone signing in who isn't listed below is a " },
   rolesNoteB: {
@@ -137,6 +158,8 @@ export default function AdminPanel({
   initialRoles,
   initialPermissions,
   initialArchive,
+  initialStatusRules,
+  statusUsage,
   initialError,
   currentEmail,
 }: {
@@ -144,6 +167,8 @@ export default function AdminPanel({
   initialRoles: RoleRow[];
   initialPermissions: Record<string, Permissions>;
   initialArchive: ArchiveStatus | null;
+  initialStatusRules: StatusRuleRow[];
+  statusUsage: Record<string, Record<string, number>>;
   initialError: string | null;
   currentEmail: string;
 }) {
@@ -171,6 +196,7 @@ export default function AdminPanel({
   const [roles, setRoles] = useState(initialRoles);
   const [perms, setPerms] = useState(initialPermissions);
   const [archive, setArchive] = useState(initialArchive);
+  const [statusRules, setStatusRules] = useState(initialStatusRules);
   const [busy, setBusy] = useState(false);
 
   const roleByKey = new Map(roles.map((r) => [r.roleKey, r]));
@@ -265,6 +291,15 @@ export default function AdminPanel({
     }
   }
 
+  // --- 結案狀態 ---
+  async function toggleClosed(rule: StatusRuleRow, isClosed: boolean) {
+    setStatusRules((prev) => prev.map((r) => (r.id === rule.id ? { ...r, isClosed } : r)));
+    const data = await call("/api/admin/status-rules", "PATCH", { id: rule.id, isClosed });
+    if (!data) {
+      setStatusRules((prev) => prev.map((r) => (r.id === rule.id ? { ...r, isClosed: rule.isClosed } : r)));
+    }
+  }
+
   // --- 案件封存 ---
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
@@ -284,6 +319,7 @@ export default function AdminPanel({
   const TABS: { key: Tab; label: string }[] = [
     { key: "roles", label: t(lang, "navRoles") },
     { key: "permissions", label: t(lang, "navPerms") },
+    { key: "status", label: t(lang, "navStatus") },
     { key: "archive", label: t(lang, "navArchive") },
   ];
 
@@ -538,6 +574,86 @@ export default function AdminPanel({
               </table>
             </div>
           </div>
+        </>
+      )}
+
+      {tab === "status" && (
+        <>
+          <div className="note">{t(lang, "statusHint")}</div>
+          {(["t1ho", "ho"] as const).map((boardKey) => {
+            const listKey = STATUS_LIST_KEY[boardKey];
+            const rules = statusRules.filter((r) => r.listKey === listKey);
+            const counts = statusUsage[listKey] ?? {};
+            // Statuses sitting on cases with no option row behind them can't be
+            // configured here, so say so rather than leaving them unexplained.
+            const known = new Set(rules.map((r) => r.name.trim().toLowerCase()));
+            const unknown = Object.keys(counts).filter((name) => !known.has(name.trim().toLowerCase()));
+
+            return (
+              <div className="card" key={listKey}>
+                <div className="card-head">
+                  <div>
+                    <h2>{boardKey === "t1ho" ? "T1 HO" : "HO"}</h2>
+                    <p className="hint">{t(lang, "statusNote")}</p>
+                  </div>
+                </div>
+
+                {rules.length === 0 && <p className="hint">{t(lang, "statusEmpty")}</p>}
+
+                {rules.length > 0 && (
+                  <div className="table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>{t(lang, "statusColName")}</th>
+                          <th>{t(lang, "statusColCases")}</th>
+                          <th style={{ width: 90, textAlign: "center" }}>{t(lang, "statusColClosed")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rules.map((r) => (
+                          <tr key={r.id}>
+                            <td>
+                              <span className="status-name">
+                                <span className="swatch" style={{ background: r.color }} />
+                                {r.name}
+                              </span>
+                            </td>
+                            <td className="muted">{(counts[r.name] ?? 0).toLocaleString()}</td>
+                            <td style={{ textAlign: "center" }}>
+                              <input
+                                type="checkbox"
+                                checked={r.isClosed}
+                                disabled={busy}
+                                aria-label={`${r.name} — ${t(lang, "statusColClosed")}`}
+                                onChange={(e) => toggleClosed(r, e.target.checked)}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {unknown.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 14, fontWeight: 650 }}>
+                      {t(lang, "statusUnknownTitle")}
+                    </p>
+                    <p className="hint">{t(lang, "statusUnknownHint")}</p>
+                    <div className="status-unknown-list">
+                      {unknown.map((name) => (
+                        <span className="status-unknown-chip" key={name}>
+                          {name} · {(counts[name] ?? 0).toLocaleString()}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </>
       )}
 

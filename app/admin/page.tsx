@@ -8,6 +8,8 @@ import {
   type RoleRow,
 } from "@/lib/permissionsServer";
 import { fetchArchiveStatus, type ArchiveStatus } from "@/lib/archive";
+import { fetchStatusRules, type StatusRuleRow } from "@/lib/statusRules";
+import { fetchOptionUsage } from "@/lib/optionListsServer";
 import type { Permissions } from "@/lib/permissions";
 import AdminPanel from "../components/AdminPanel";
 import Topbar from "../components/Topbar";
@@ -27,15 +29,27 @@ export default async function AdminPage() {
   let roles: RoleRow[] = [];
   let rolePermissions: Record<string, Permissions> = {};
   let archive: ArchiveStatus | null = null;
+  let statusRules: StatusRuleRow[] = [];
+  // How many cases sit on each status, so nobody flips one without seeing what
+  // it moves.
+  let statusUsage: Record<string, Record<string, number>> = {};
   let error: string | null = null;
 
   try {
-    [users, roles, rolePermissions, archive] = await Promise.all([
+    const [u, r, p, a, s, usage] = await Promise.all([
       fetchUsers(),
       fetchRoles(),
       fetchAllRolePermissions(),
       fetchArchiveStatus(),
+      fetchStatusRules(),
+      fetchOptionUsage(),
     ]);
+    users = u;
+    roles = r;
+    rolePermissions = p;
+    archive = a;
+    statusRules = s ?? [];
+    statusUsage = usage;
   } catch (err) {
     error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
   }
@@ -50,6 +64,8 @@ export default async function AdminPage() {
             initialRoles={roles}
             initialPermissions={rolePermissions}
             initialArchive={archive}
+            initialStatusRules={statusRules}
+            statusUsage={statusUsage}
             initialError={error}
             currentEmail={role.email}
           />

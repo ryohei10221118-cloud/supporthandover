@@ -109,20 +109,29 @@ function displayNameFromEmail(email: string): string {
 function toHistoryEntry(e: SupaEdit): HistoryEntry {
   return {
     editor: displayNameFromEmail(e.editorEmail),
-    when: formatTimestampUTC8(e.editedAt),
+    when: formatHistoryTimestamp(e.editedAt),
     text: e.previousValue,
   };
 }
 
 // MM/DD HH:MM in UTC+8, matching the T1 HO Sheets board's comment format.
-function formatTimestampUTC8(iso: string): string {
+function formatTimestampUTC8(iso: string, withSeconds = false): string {
   const date = new Date(iso);
   const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(shifted.getUTCDate()).padStart(2, "0");
   const hh = String(shifted.getUTCHours()).padStart(2, "0");
   const min = String(shifted.getUTCMinutes()).padStart(2, "0");
-  return `${mm}/${dd} ${hh}:${min}`;
+  if (!withSeconds) return `${mm}/${dd} ${hh}:${min}`;
+  const ss = String(shifted.getUTCSeconds()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${min}:${ss}`;
+}
+
+// Edit history is the one place minutes aren't enough: several edits to the
+// same cell often land in the same minute, and without seconds the entries
+// read as if they happened at the same moment.
+function formatHistoryTimestamp(iso: string): string {
+  return formatTimestampUTC8(iso, true);
 }
 
 // --- Draggable/resizable columns (same behavior as CaseBoard.tsx's T1 HO
@@ -1195,7 +1204,7 @@ export default function SupaBoard({
       const col = FIELD_COLUMN[e.field];
       return {
         editor: displayNameFromEmail(e.editorEmail),
-        when: formatTimestampUTC8(e.editedAt),
+        when: formatHistoryTimestamp(e.editedAt),
         text: col ? COLUMN_LABELS[col][board][lang] || e.field : e.field,
         at: e.editedAt,
       };
@@ -1203,14 +1212,14 @@ export default function SupaBoard({
     for (const cm of c.comments) {
       entries.push({
         editor: displayNameFromEmail(cm.authorEmail),
-        when: formatTimestampUTC8(cm.createdAt),
+        when: formatHistoryTimestamp(cm.createdAt),
         text: t(lang, "commentAdded"),
         at: cm.createdAt,
       });
       for (const ed of cm.edits) {
         entries.push({
           editor: displayNameFromEmail(ed.editorEmail),
-          when: formatTimestampUTC8(ed.editedAt),
+          when: formatHistoryTimestamp(ed.editedAt),
           text: t(lang, "commentEdited"),
           at: ed.editedAt,
         });

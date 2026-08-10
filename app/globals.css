@@ -2906,3 +2906,35 @@ button.primary.danger {
   color: var(--text-muted);
   margin-top: 4px;
 }
+
+/* 管理後台 → 結案狀態 */
+.status-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-unknown-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.status-unknown-chip {
+  display: inline-flex;
+  font-size: 0.76rem;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--overdue-bg);
+  color: var(--overdue);
+  white-space: nowrap;
+}
+
+.perm-matrix-table input[type="checkbox"],
+.table-scroll input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
