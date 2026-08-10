@@ -52,6 +52,12 @@ const STRINGS = {
   },
   empty: { zh: "這個清單還沒有選項。", en: "This list has no options yet." },
   saving: { zh: "儲存中...", en: "Saving..." },
+  collapseList: { zh: "收合清單", en: "Collapse list" },
+  expandList: { zh: "展開清單", en: "Expand list" },
+  collapsedCount: {
+    zh: (n: number) => `已收合 ${n.toLocaleString()} 個選項。`,
+    en: (n: number) => `${n.toLocaleString()} options collapsed.`,
+  },
 } satisfies Record<string, Record<Lang, string | ((...a: never[]) => string)>>;
 
 function t<K extends keyof typeof STRINGS>(
@@ -82,6 +88,10 @@ export default function OptionListsPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [lang, setLang] = useState<Lang>("zh");
+  // Lists with more than a couple of options get a collapse toggle so a long
+  // one (HO Classification, T1 HO 部門) doesn't push everything else off the
+  // page. Switching lists starts expanded again, as in the mockup.
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     try {
@@ -109,6 +119,10 @@ export default function OptionListsPanel({
     () => options.filter((o) => !counts[o.name]).length,
     [options, counts]
   );
+
+  // Below three rows there's nothing worth hiding — same threshold as the
+  // mockup's updateListCollapseToggle.
+  const canCollapse = options.length >= 3;
 
   function replaceOption(next: OptionItem) {
     setLists((prev) => ({
@@ -211,7 +225,10 @@ export default function OptionListsPanel({
             key={key}
             type="button"
             className={key === activeKey ? "active" : undefined}
-            onClick={() => setActiveKey(key)}
+            onClick={() => {
+              setActiveKey(key);
+              setCollapsed(false);
+            }}
           >
             {LIST_META[key].name[lang]}
             {globalKeys.includes(key) && <span className="global-tag">{t(lang, "global")}</span>}
@@ -225,16 +242,36 @@ export default function OptionListsPanel({
             <h2>{meta.name[lang]}</h2>
             <p className="hint">{isGlobal ? t(lang, "hintGlobal") : t(lang, "hintOwn")}</p>
           </div>
-          {totalUnused > 0 && (
-            <span className="option-count">
-              {t(lang, "unused")} {totalUnused}
-            </span>
-          )}
+          <div className="card-head-right">
+            {totalUnused > 0 && (
+              <span className="option-count">
+                {t(lang, "unused")} {totalUnused}
+              </span>
+            )}
+            {canCollapse && (
+              <button
+                type="button"
+                className={`group-toggle${collapsed ? " collapsed" : ""}`}
+                onClick={() => setCollapsed((c) => !c)}
+                aria-expanded={!collapsed}
+                aria-label={t(lang, collapsed ? "expandList" : "collapseList")}
+                title={t(lang, collapsed ? "expandList" : "collapseList")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         {options.length === 0 && <p className="hint">{t(lang, "empty")}</p>}
 
-        {options.map((option, i) => {
+        {collapsed && (
+          <p className="hint">{t(lang, "collapsedCount", options.length)}</p>
+        )}
+
+        {!collapsed && options.map((option, i) => {
           const used = counts[option.name] ?? 0;
           return (
             <div className="option-row" key={option.id}>

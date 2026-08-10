@@ -394,6 +394,43 @@ h1 {
   margin: 0;
 }
 
+.card-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Collapses a long option list so it stops dominating the page. */
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.group-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.group-toggle.collapsed {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-toggle { transition: none; }
+}
+
 .card-head .hint,
 .hint {
   font-size: 0.78rem;
@@ -2556,6 +2593,10 @@ tbody tr:nth-child(even) {
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.2s ease-in-out infinite;
   border-radius: 6px;
+  /* The fixed widths below are placeholder sizes, not commitments — inside a
+     narrow container (the stat cards) they must give way rather than spill
+     out past its edge. */
+  max-width: 100%;
 }
 
 @keyframes skeleton-shimmer {
@@ -2571,3 +2612,7 @@ tbody tr:nth-child(even) {
 .skeleton-sub { width: 220px; height: 12px; }
 .skeleton-stat { width: 60px; height: 26px; margin-bottom: 8px; }
 .skeleton-block { height: 320px; margin-top: 18px; border-radius: 12px; }
+
+/* In a stat card the label line stands in for a short caption, so size it to
+   the card instead of reusing the topbar's 220px. */
+.summary .skeleton-sub { width: 60%; }
