@@ -604,7 +604,13 @@ h1 {
   border-top: 1px solid var(--border);
 }
 
-.add-row input[type="text"] {
+/* Every text-ish input in an add-row, not just type="text" — the admin
+   page's email field was falling through to the browser default, which in
+   dark mode is a white box. */
+.add-row input[type="text"],
+.add-row input[type="email"],
+.add-row input[type="url"],
+.add-row input:not([type]) {
   flex: 1;
   min-width: 200px;
   font-family: inherit;
@@ -616,7 +622,10 @@ h1 {
   padding: 8px 11px;
 }
 
-.add-row input[type="text"]:focus {
+.add-row input[type="text"]:focus,
+.add-row input[type="email"]:focus,
+.add-row input[type="url"]:focus,
+.add-row input:not([type]):focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
