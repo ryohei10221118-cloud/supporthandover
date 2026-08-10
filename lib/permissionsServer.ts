@@ -164,10 +164,24 @@ export const getSessionRole = cache(async function getSessionRole(): Promise<Ses
       }
     }
 
-    const [permissions, roles] = await Promise.all([
+    let [permissions, roles] = await Promise.all([
       fetchPermissionsFor(roleKey),
       fetchRoles().catch(() => [] as RoleRow[]),
     ]);
+
+    // A role can't be deleted from 管理後台 while anyone still holds it, but it
+    // can be deleted straight out of the database. Without this, that person
+    // resolves to a role nobody can describe and no permissions at all —
+    // locked out of even commenting, with nothing on screen to explain it.
+    // Viewer is where an unrecognised account starts, so it's where a
+    // vanished role lands too. The roles.length check matters: an empty list
+    // means the lookup failed, not that every role disappeared.
+    if (roles.length > 0 && !roles.some((r) => r.roleKey === roleKey)) {
+      console.warn(`users.role_key "${roleKey}" (${session.email}) no longer exists — treating as viewer`);
+      roleKey = "viewer";
+      permissions = await fetchPermissionsFor(roleKey);
+    }
+
     const label = roles.find((r) => r.roleKey === roleKey)?.label ?? roleKey;
     return { email: session.email, roleKey, label, permissions };
   } catch {
