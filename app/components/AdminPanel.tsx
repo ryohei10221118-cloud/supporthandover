@@ -11,16 +11,47 @@ import {
 } from "@/lib/permissions";
 import type { AdminUserRow, RoleRow } from "@/lib/permissionsServer";
 import type { ArchiveStatus } from "@/lib/archive";
+import type { ImportPlan } from "@/lib/sheetImport";
 import { STATUS_LIST_KEY, type StatusRuleRow } from "@/lib/statusRulesShared";
 
 type Lang = "zh" | "en";
-type Tab = "roles" | "permissions" | "status" | "archive";
+type Tab = "roles" | "permissions" | "status" | "archive" | "import";
 
 const STRINGS = {
   navRoles: { zh: "角色管理", en: "Roles" },
   navPerms: { zh: "權限設定", en: "Permissions" },
   navArchive: { zh: "案件封存", en: "Archive" },
   navStatus: { zh: "結案狀態", en: "Closed statuses" },
+  navImport: { zh: "Sheet 匯入", en: "Sheet import" },
+
+  importTitle: { zh: "從 Google Sheet 補進新案件", en: "Bring in new cases from the Google Sheet" },
+  importHint: {
+    zh: "交接期間如果還有人在舊 Sheet 上記錄，用這裡把 Sheet 上有、看板上還沒有的 T1 HO 案件與回覆補進來。先「試算」看清楚會新增什麼，再執行。",
+    en: "For the changeover, this pulls in T1 HO cases and replies that exist in the sheet but not on the board. Preview first, then run.",
+  },
+  importSafety: {
+    zh: "只會新增，不會修改或刪除任何東西：已存在的案件（同一個序列）完全不動，所以你在工具上改過的內容不會被 Sheet 蓋掉；回覆只有在該案件還沒有一模一樣的留言時才會新增。因此重複執行是安全的。",
+    en: "Inserts only — nothing is updated or deleted. A case that already exists (same seq) is left untouched, so edits made in the tool are never overwritten, and a reply is added only if that case has no identical comment. Running it more than once is safe.",
+  },
+  importPreview: { zh: "試算", en: "Preview" },
+  importRun: { zh: "執行匯入", en: "Run import" },
+  importSheetRows: { zh: "Sheet 上的資料列", en: "Rows in the sheet" },
+  importNewCases: { zh: "將新增的案件", en: "Cases to add" },
+  importNewComments: { zh: "將新增的回覆", en: "Replies to add" },
+  importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
+  importNothing: { zh: "沒有需要補進來的東西，看板已經跟 Sheet 同步。", en: "Nothing to bring across — the board matches the sheet." },
+  importDone: {
+    zh: (c: number, m: number) => `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆。`,
+    en: (c: number, m: number) => `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added.`,
+  },
+  importSample: { zh: "將新增的案件（前 20 筆）", en: "Cases to add (first 20)" },
+  importConfirmTitle: { zh: "確定要匯入嗎？", en: "Run the import?" },
+  importConfirmBody: {
+    zh: (c: number, m: number) => `會新增 ${c.toLocaleString()} 筆案件與 ${m.toLocaleString()} 則回覆。既有資料不會被更動。`,
+    en: (c: number, m: number) =>
+      `${c.toLocaleString()} cases and ${m.toLocaleString()} replies will be added. Nothing existing is changed.`,
+  },
+  importConfirm: { zh: "確定匯入", en: "Import" },
 
   statusTitle: { zh: "哪些狀態算結案", en: "Which statuses count as finished" },
   statusHint: {
@@ -301,6 +332,23 @@ export default function AdminPanel({
     }
   }
 
+  // --- Sheet 匯入 ---
+  const [plan, setPlan] = useState<ImportPlan | null>(null);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+
+  async function previewImport() {
+    const data = await call("/api/admin/sheet-import", "GET");
+    if (data) setPlan(data as unknown as ImportPlan);
+  }
+
+  async function runImport() {
+    const data = await call("/api/admin/sheet-import", "POST");
+    setImportConfirmOpen(false);
+    if (!data) return;
+    setPlan(data.plan as unknown as ImportPlan);
+    setNotice(t(lang, "importDone", Number(data.casesInserted ?? 0), Number(data.commentsInserted ?? 0)));
+  }
+
   // --- 案件封存 ---
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
@@ -322,6 +370,7 @@ export default function AdminPanel({
     { key: "permissions", label: t(lang, "navPerms") },
     { key: "status", label: t(lang, "navStatus") },
     { key: "archive", label: t(lang, "navArchive") },
+    { key: "import", label: t(lang, "navImport") },
   ];
 
   return (
@@ -667,6 +716,90 @@ export default function AdminPanel({
         </>
       )}
 
+      {tab === "import" && (
+        <>
+          <div className="note">{t(lang, "importSafety")}</div>
+          <div className="card">
+            <div className="card-head">
+              <div>
+                <h2>{t(lang, "importTitle")}</h2>
+                <p className="hint">{t(lang, "importHint")}</p>
+              </div>
+            </div>
+
+            <div className="field-row">
+              <button type="button" className="ghost" disabled={busy} onClick={previewImport}>
+                {busy ? t(lang, "saving") : t(lang, "importPreview")}
+              </button>
+              {plan && (plan.newCases.length > 0 || plan.newComments.length > 0) && (
+                <button type="button" className="primary" disabled={busy} onClick={() => setImportConfirmOpen(true)}>
+                  {t(lang, "importRun")}
+                </button>
+              )}
+            </div>
+
+            {plan && (
+              <>
+                <div className="archive-stat-row">
+                  <div className="archive-stat">
+                    <div className="n">{plan.sheetRows.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importSheetRows")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{plan.newCases.length.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importNewCases")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{plan.newComments.length.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importNewComments")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{plan.unchanged.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importUnchanged")}</div>
+                  </div>
+                </div>
+
+                {plan.newCases.length === 0 && plan.newComments.length === 0 && (
+                  <p className="hint" style={{ marginTop: 14 }}>
+                    {t(lang, "importNothing")}
+                  </p>
+                )}
+
+                {plan.newCases.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 16, fontWeight: 650 }}>
+                      {t(lang, "importSample")}
+                    </p>
+                    <div className="table-scroll" style={{ marginTop: 8 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>序列</th>
+                            <th>日期</th>
+                            <th>狀態</th>
+                            <th>內容</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.newCases.slice(0, 20).map((c) => (
+                            <tr key={c.seq}>
+                              <td>{c.seq}</td>
+                              <td className="muted">{c.date}</td>
+                              <td className="muted">{c.status}</td>
+                              <td className="muted">{c.content.slice(0, 60)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+
       {tab === "archive" && archive && (
         <>
           <div className="card">
@@ -773,6 +906,25 @@ export default function AdminPanel({
               );
             })}
           </div>
+        </Modal>
+      )}
+
+      {importConfirmOpen && plan && (
+        <Modal
+          title={t(lang, "importConfirmTitle")}
+          onClose={() => setImportConfirmOpen(false)}
+          actions={
+            <>
+              <button type="button" className="ghost" onClick={() => setImportConfirmOpen(false)}>
+                {t(lang, "cancel")}
+              </button>
+              <button type="button" className="primary" disabled={busy} onClick={runImport}>
+                {busy ? t(lang, "saving") : t(lang, "importConfirm")}
+              </button>
+            </>
+          }
+        >
+          <p>{t(lang, "importConfirmBody", plan.newCases.length, plan.newComments.length)}</p>
         </Modal>
       )}
 
