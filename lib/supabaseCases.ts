@@ -248,23 +248,34 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
   const chunks: string[][] = [];
   for (let i = 0; i < caseIds.length; i += CHUNK) chunks.push(caseIds.slice(i, i + CHUNK));
 
+  // Each chunk is 300 cases, which can easily carry more than PostgREST's
+  // 1000-row response cap between them — and going over it drops comments
+  // silently rather than erroring. Page inside each chunk, ordered by id
+  // because .range() needs a unique sort to put the same row on the same
+  // page twice; the thread order is restored below.
   const commentPages = await Promise.all(
-    chunks.map((chunk) =>
-      supabase
-        .from("comments")
-        .select("id, case_id, author_id, body, created_at, edited_at")
-        // oldest first, so building each case's thread in array order needs
-        // no further sorting.
-        .in("case_id", chunk)
-        .order("created_at", { ascending: true })
-        .returns<CommentDbRow[]>()
-    )
+    chunks.map(async (chunk) => {
+      const rows: CommentDbRow[] = [];
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from("comments")
+          .select("id, case_id, author_id, body, created_at, edited_at")
+          .in("case_id", chunk)
+          .order("id", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1)
+          .returns<CommentDbRow[]>();
+        if (error) throw new Error(`Supabase 讀取 comments 失敗: ${error.message}`);
+        const page = data ?? [];
+        rows.push(...page);
+        if (page.length < PAGE_SIZE) break;
+      }
+      return rows;
+    })
   );
-  const commentRows: CommentDbRow[] = [];
-  for (const { data, error } of commentPages) {
-    if (error) throw new Error(`Supabase 讀取 comments 失敗: ${error.message}`);
-    commentRows.push(...(data ?? []));
-  }
+  const commentRows: CommentDbRow[] = commentPages.flat();
+  // Oldest first, so building each case's thread in array order needs no
+  // further sorting downstream.
+  commentRows.sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   // Screenshots, and the "先前內容" audit trail behind the （已編輯）markers.
   // Unlike comments these tables only gain a row when someone edits or

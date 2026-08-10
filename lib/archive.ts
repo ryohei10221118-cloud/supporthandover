@@ -3,6 +3,8 @@ import { getSupabaseClient } from "./supabaseClient";
 
 export const THRESHOLD_CHOICES = [3, 6, 12];
 const DEFAULT_THRESHOLD = 6;
+// PostgREST's default response cap. Anything read as rows has to page past it.
+const PAGE_SIZE = 1000;
 
 export interface ArchiveStatus {
   thresholdMonths: number;
@@ -31,32 +33,64 @@ export async function fetchArchiveStatus(): Promise<ArchiveStatus> {
   const thresholdMonths = settings?.threshold_months ?? DEFAULT_THRESHOLD;
   const cutoff = archiveCutoffDate(thresholdMonths);
 
-  const { data: eligible, error: casesError } = await supabase
+  // A count query, not a row fetch: PostgREST caps a response at 1000 rows
+  // and says nothing about it, so counting the rows it hands back reports
+  // 1000 for every threshold once a board has more than that.
+  const { count: eligibleCases, error: casesError } = await supabase
     .from("cases")
-    .select("id")
+    .select("id", { count: "exact", head: true })
     .eq("archived", false)
-    .lt("create_date", cutoff)
-    .returns<{ id: string }[]>();
+    .lt("create_date", cutoff);
   if (casesError) throw new Error(casesError.message);
-  const ids = (eligible ?? []).map((c) => c.id);
 
   // How many screenshots come along with them — shown so nobody runs this
-  // without knowing what else moves out of view.
-  let eligibleAttachments = 0;
-  const CHUNK = 300;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const chunk = ids.slice(i, i + CHUNK);
-    const { count, error } = await supabase
+  // without knowing what else moves out of view. Driven from the attachments
+  // side because that table is small; walking the eligible cases instead
+  // would mean paging through thousands of ids to ask about a handful.
+  const attachmentCaseIds = new Set<string>();
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
       .from("attachments")
-      .select("id", { count: "exact", head: true })
-      .in("case_id", chunk);
+      .select("case_id")
+      .not("case_id", "is", null)
+      .order("case_id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+      .returns<{ case_id: string }[]>();
     if (error) throw new Error(error.message);
-    eligibleAttachments += count ?? 0;
+    const page = data ?? [];
+    for (const a of page) attachmentCaseIds.add(a.case_id);
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  let eligibleAttachments = 0;
+  if (attachmentCaseIds.size > 0) {
+    const ids = [...attachmentCaseIds];
+    const eligibleWithAttachments: string[] = [];
+    const CHUNK = 300;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await supabase
+        .from("cases")
+        .select("id")
+        .in("id", ids.slice(i, i + CHUNK))
+        .eq("archived", false)
+        .lt("create_date", cutoff)
+        .returns<{ id: string }[]>();
+      if (error) throw new Error(error.message);
+      for (const c of data ?? []) eligibleWithAttachments.push(c.id);
+    }
+    for (let i = 0; i < eligibleWithAttachments.length; i += CHUNK) {
+      const { count, error } = await supabase
+        .from("attachments")
+        .select("id", { count: "exact", head: true })
+        .in("case_id", eligibleWithAttachments.slice(i, i + CHUNK));
+      if (error) throw new Error(error.message);
+      eligibleAttachments += count ?? 0;
+    }
   }
 
   return {
     thresholdMonths,
-    eligibleCases: ids.length,
+    eligibleCases: eligibleCases ?? 0,
     eligibleAttachments,
     lastRunAt: settings?.last_run_at ?? null,
   };
