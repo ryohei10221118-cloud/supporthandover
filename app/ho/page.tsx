@@ -37,7 +37,7 @@ export default async function HoPage() {
     <>
       <Topbar page="ho" />
       <main className="content">
-        <div className="page">
+        <div className="page page-fill">
           <SupaBoard
             board="ho"
             initialBoard={board}

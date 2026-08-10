@@ -106,6 +106,15 @@ export function displayNameFromEmail(email: string): string {
   return email.split("@")[0];
 }
 
+// "sunny.l@x.com" -> "Sunny". What gets stored in a case's CS column, so new
+// rows read the way the board displays them; older rows keep whatever they
+// have and are prettified at render time.
+export function prettyDisplayName(email: string): string {
+  const first = displayNameFromEmail(email).trim().split(/[.\s_-]+/)[0] ?? "";
+  if (!first) return displayNameFromEmail(email);
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
 export const SESSION_COOKIE = "t1ho_session";
 export const PENDING_COOKIE = "t1ho_pending_auth";
 export const SESSION_MAX_AGE = SESSION_TTL_SECONDS;

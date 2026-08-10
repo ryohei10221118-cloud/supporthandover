@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { displayNameFromEmail } from "@/lib/auth";
+import { prettyDisplayName } from "@/lib/auth";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const cs = displayNameFromEmail(role.email);
+  const cs = prettyDisplayName(role.email);
 
   try {
     const supabase = getSupabaseClient();

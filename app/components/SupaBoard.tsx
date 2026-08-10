@@ -12,6 +12,7 @@ import type {
 } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
+import ImageLightbox, { isViewableImage } from "./ImageLightbox";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
 import NewCaseModal from "./NewCaseModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
@@ -104,6 +105,15 @@ function seqNumber(seq: string): number {
 // this is a small duplicate rather than a shared import).
 function displayNameFromEmail(email: string): string {
   return email.split("@")[0];
+}
+
+// "sunny.l" -> "Sunny". Account names carry a surname initial and arrive
+// lowercased; on a board people read at a glance, the given name is what
+// identifies someone. Display only — the stored value is left alone.
+function prettyName(raw: string): string {
+  const first = raw.trim().split(/[.\s_-]+/)[0] ?? "";
+  if (!first) return raw.trim();
+  return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
 function toHistoryEntry(e: SupaEdit): HistoryEntry {
@@ -234,7 +244,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   cs: 90,
   op: 160,
   note: 260,
-  reply: 260,
+  reply: 320,
   relatedTicket: 130,
   updateDate: 168,
   noteLabel: 140,
@@ -306,6 +316,8 @@ function ClampedCell({
   saving = false,
   historyTag,
   attachments,
+  displayText,
+  onOpenImage,
 }: {
   text: string;
   cellKey: string;
@@ -316,6 +328,11 @@ function ClampedCell({
   saving?: boolean;
   historyTag?: ReactNode;
   attachments?: SupaAttachment[];
+  // What to show when the raw stored value isn't what a reader wants (the CS
+  // column stores "sunny.l" and shows "Sunny"). Editing always works on the
+  // stored text, so a save can't silently rewrite it.
+  displayText?: string;
+  onOpenImage?: (a: SupaAttachment) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -391,26 +408,51 @@ function ClampedCell({
       }}
     >
       {text ? (
-        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>{linkify(text, cellKey)}</div>
+        <div className={`note-text ${isLong && !isExpanded ? "clamped" : ""}`}>
+          {linkify(displayText ?? text, cellKey)}
+        </div>
       ) : (
         canEdit && <span className="cell-placeholder">—</span>
       )}
       {historyTag}
       {/* Screenshots attached when the case was created — without these the
           upload in 新增案件 has nowhere to show up. */}
-      {attachments?.map((a) => (
-        <div key={a.id}>
-          <a className="attach-chip" href={a.url} target="_blank" rel="noopener noreferrer" title={a.fileName}>
-            📎 {a.fileName}
-          </a>
-        </div>
-      ))}
+      {onOpenImage &&
+        attachments?.map((a) => (
+          <div key={a.id}>
+            <AttachChip attachment={a} onOpenImage={onOpenImage} />
+          </div>
+        ))}
       {isLong && (
         <button type="button" className="note-toggle" onClick={() => onToggle(cellKey)}>
           {isExpanded ? t(lang, "showLess") : t(lang, "showMore")}
         </button>
       )}
     </td>
+  );
+}
+
+function AttachChip({
+  attachment,
+  onOpenImage,
+}: {
+  attachment: SupaAttachment;
+  onOpenImage: (a: SupaAttachment) => void;
+}) {
+  const label = `\u{1F4CE} ${attachment.fileName}`;
+  // Anything we can render opens in place; a PDF or a pasted link still has
+  // to leave the page, so it stays a link rather than pretending otherwise.
+  if (!isViewableImage(attachment.fileName, attachment.url)) {
+    return (
+      <a className="attach-chip" href={attachment.url} target="_blank" rel="noopener noreferrer" title={attachment.fileName}>
+        {label}
+      </a>
+    );
+  }
+  return (
+    <button type="button" className="attach-chip" title={attachment.fileName} onClick={() => onOpenImage(attachment)}>
+      {label}
+    </button>
   );
 }
 
@@ -437,6 +479,7 @@ function CommentThread({
   commentError,
   onSubmitComment,
   canComment,
+  onOpenImage,
 }: {
   comments: SupaComment[];
   cellKey: string;
@@ -460,6 +503,7 @@ function CommentThread({
   commentError: string | null;
   onSubmitComment: () => void;
   canComment: boolean;
+  onOpenImage: (a: SupaAttachment) => void;
 }) {
   const isExpanded = expanded.has(cellKey);
   // Collapsed threads show only the first comment (the mockup's
@@ -478,7 +522,7 @@ function CommentThread({
             const isEditingThis = editingId === c.id;
             return (
               <div key={entryKey} className="comment">
-                <span className="who">{displayNameFromEmail(c.authorEmail)}</span>{" "}
+                <span className="who">{prettyName(displayNameFromEmail(c.authorEmail))}</span>{" "}
                 <span className="meta">{formatTimestampUTC8(c.createdAt)}</span>
                 {/* Comments edited before the history table existed still get
                     the marker — there's just nothing to show on hover. */}
@@ -511,15 +555,7 @@ function CommentThread({
                     {c.attachments.map((a) => (
                       <span key={a.id}>
                         <br />
-                        <a
-                          className="attach-chip"
-                          href={a.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={a.fileName}
-                        >
-                          📎 {a.fileName}
-                        </a>
+                        <AttachChip attachment={a} onOpenImage={onOpenImage} />
                       </span>
                     ))}
                   </>
@@ -812,6 +848,9 @@ export default function SupaBoard({
       editedAt: new Date().toISOString(),
     };
   }
+
+  // Screenshots open over the board rather than in a new tab.
+  const [lightbox, setLightbox] = useState<SupaAttachment | null>(null);
 
   // --- Categorical cells (click-to-change option badges) ---
   const [fieldSaving, setFieldSaving] = useState<string | null>(null);
@@ -1301,6 +1340,7 @@ export default function SupaBoard({
             onSave={canEditField("cs") ? (next) => saveField(c, "cs", next) : undefined}
             saving={fieldSaving === `${c.id}-cs`}
             historyTag={fieldTag(c, "cs")}
+            displayText={prettyName(c.cs)}
           />
         );
       case "op":
@@ -1330,6 +1370,7 @@ export default function SupaBoard({
             saving={fieldSaving === `${c.id}-content`}
             historyTag={fieldTag(c, "content")}
             attachments={c.attachments}
+            onOpenImage={setLightbox}
           />
         );
       case "reply":
@@ -1358,6 +1399,7 @@ export default function SupaBoard({
             commentSubmitting={commentSubmitting}
             commentError={commentError}
             onSubmitComment={() => submitComment(c)}
+            onOpenImage={setLightbox}
           />
         );
       case "relatedTicket":
@@ -1465,7 +1507,7 @@ export default function SupaBoard({
   const notLoaded = Math.max(totalCount - cases.length, 0);
 
   return (
-    <div>
+    <div className="board-root">
       {error && <div className="banner">{t(lang, "loadError", error)}</div>}
       {fieldError && <div className="banner">{fieldError}</div>}
 
@@ -1671,6 +1713,10 @@ export default function SupaBoard({
           </button>
         </div>
       </div>
+
+      {lightbox && (
+        <ImageLightbox url={lightbox.url} name={lightbox.fileName} onClose={() => setLightbox(null)} />
+      )}
 
       {newCaseOpen && (
         <NewCaseModal

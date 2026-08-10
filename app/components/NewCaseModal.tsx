@@ -62,7 +62,12 @@ export default function NewCaseModal({
   const [dept, setDept] = useState(depts[0]?.name ?? "");
   const [hoType, setHoType] = useState(types[0]?.name ?? "");
   const [hoClass, setHoClass] = useState(classes[0]?.name ?? "");
-  const [status, setStatus] = useState(statuses[0]?.name ?? "");
+  // A brand-new case is something nobody has dealt with yet, so it opens on
+  // Follow up rather than whatever happens to sort first — which on HO was
+  // "Closed", one careless save away from filing a case as finished.
+  const defaultStatus =
+    statuses.find((s) => s.name.trim().toLowerCase() === "follow up")?.name ?? statuses[0]?.name ?? "";
+  const [status, setStatus] = useState(defaultStatus);
   const [op, setOp] = useState("");
   const [ticket, setTicket] = useState("");
   const [content, setContent] = useState("");
