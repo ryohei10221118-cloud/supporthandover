@@ -15,6 +15,7 @@ import {
 export interface RoleRow {
   roleKey: string;
   label: string;
+  color?: string;
   isSystem: boolean;
   sortOrder: number;
 }
@@ -31,17 +32,42 @@ export async function fetchRoles(): Promise<RoleRow[]> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("custom_roles")
-    .select("key, display_name")
-    .returns<{ key: string; display_name: string }[]>();
+    .select("key, display_name, color")
+    .returns<{ key: string; display_name: string; color: string | null }[]>();
   if (error) throw new Error(error.message);
 
   const custom = (data ?? []).map((r, i) => ({
     roleKey: r.key,
     label: r.display_name,
+    color: r.color ?? undefined,
     isSystem: false,
     sortOrder: 10 + i,
   }));
   return [...BUILT_IN_ROLES, ...custom];
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  roleKey: string;
+  addedAt: string | null;
+}
+
+/** Everyone who has ever signed in, for the 角色管理 table. */
+export async function fetchUsers(): Promise<AdminUserRow[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, email, role_key, added_at")
+    .order("added_at", { ascending: true })
+    .returns<{ id: string; email: string; role_key: string; added_at: string | null }[]>();
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((u) => ({
+    id: u.id,
+    email: u.email,
+    roleKey: u.role_key,
+    addedAt: u.added_at,
+  }));
 }
 
 export async function fetchPermissionsFor(roleKey: string): Promise<Permissions> {

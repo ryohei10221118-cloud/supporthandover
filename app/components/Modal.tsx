@@ -17,11 +17,14 @@ export default function Modal({
   onClose,
   children,
   actions,
+  wide = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   actions: ReactNode;
+  // A roomier dialog for content laid out in columns (the role cheat sheet).
+  wide?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -46,7 +49,7 @@ export default function Modal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`modal${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <h3>{title}</h3>
         {children}
         <div className="modal-actions">{actions}</div>

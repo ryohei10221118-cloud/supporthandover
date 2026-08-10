@@ -17,6 +17,7 @@ const STRINGS = {
   navDashboard: { zh: "分析儀表板", en: "Dashboard" },
   previewAs: { zh: "預覽身份", en: "Preview as" },
   navLists: { zh: "選項管理", en: "Option lists" },
+  navAdmin: { zh: "管理後台", en: "Admin" },
   logout: { zh: "登出", en: "Sign out" },
 };
 
@@ -160,6 +161,13 @@ export default function Sidebar({
     </svg>
   );
 
+  const adminIcon = (
+    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+
   const dashboardIcon = (
     <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <line x1="18" y1="20" x2="18" y2="10" />
@@ -180,6 +188,14 @@ export default function Sidebar({
       show: !!effectivePerms?.["page.dashboard"],
     },
     { href: "/lists", label: t(lang, "navLists"), icon: listsIcon, show: !!effectivePerms?.["page.lists"] },
+    // Admin-role only, not permission-gated — see lib/adminGuard.ts. Hidden
+    // while previewing another role, so the preview shows what they'd see.
+    {
+      href: "/admin",
+      label: t(lang, "navAdmin"),
+      icon: adminIcon,
+      show: me?.role === "admin" && (previewRole ?? "admin") === "admin",
+    },
   ].filter((i) => i.show);
 
   return (

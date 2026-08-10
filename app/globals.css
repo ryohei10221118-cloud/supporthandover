@@ -2616,3 +2616,260 @@ tbody tr:nth-child(even) {
 /* In a stat card the label line stands in for a short caption, so size it to
    the card instead of reusing the topbar's 220px. */
 .summary .skeleton-sub { width: 60%; }
+
+/* ---------- 管理後台 ---------- */
+.admin-panel .card:last-child {
+  margin-bottom: 0;
+}
+
+.banner.ok {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* A short explanation above a card, marked with an accent rule rather than
+   the alarm colours a .banner carries. */
+.note {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 13px;
+  margin: 0 0 16px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.note strong {
+  color: var(--text);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 520px;
+}
+
+.table-scroll th,
+.table-scroll td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.table-scroll thead th {
+  background: var(--bg);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 650;
+}
+
+.table-scroll tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table-scroll td.muted {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.role-badge {
+  display: inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.role-badge.viewer {
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  color: var(--text-muted);
+}
+
+.role-badge.editor {
+  background: color-mix(in srgb, #2563eb 14%, transparent);
+  color: #2563eb;
+}
+
+.role-badge.admin {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+select.role-select,
+select.threshold {
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+}
+
+select.threshold {
+  font-size: 0.86rem;
+  padding: 8px 11px;
+  border-radius: 8px;
+}
+
+select.role-select:focus,
+select.threshold:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 18px;
+  flex-wrap: wrap;
+}
+
+.field-row label {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+/* role x permission matrix */
+.perm-matrix-table th:not(:first-child),
+.perm-matrix-table td:not(:first-child) {
+  text-align: center;
+  width: 100px;
+}
+
+.perm-matrix-table thead th {
+  vertical-align: middle;
+}
+
+.perm-matrix-table tbody td:first-child {
+  white-space: nowrap;
+}
+
+.perm-matrix-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.perm-matrix-table .group-row td {
+  background: var(--bg);
+  font-weight: 650;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  padding-top: 8px;
+  padding-bottom: 8px;
+  text-align: left;
+}
+
+.perm-matrix-table .group-row .group-toggle {
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  border: none;
+  background: none;
+  color: inherit;
+  vertical-align: middle;
+}
+
+.perm-matrix-table .group-row.collapsed .group-toggle {
+  transform: rotate(-90deg);
+}
+
+.locked-ic {
+  display: inline-flex;
+  cursor: help;
+  color: var(--accent);
+}
+
+/* archive */
+.archive-stat-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.archive-stat {
+  flex: 1;
+  min-width: 140px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.archive-stat .n {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.archive-stat .l {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+button.primary.danger {
+  background: linear-gradient(180deg, var(--overdue), color-mix(in srgb, var(--overdue) 70%, #000));
+}
+
+.modal.wide {
+  max-width: 620px;
+}
+
+.role-help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.role-help-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 15px;
+}
+
+.role-help-card .who {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+
+.role-help-card ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.role-help-card li {
+  margin-bottom: 4px;
+}

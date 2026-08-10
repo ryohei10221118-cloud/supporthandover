@@ -29,6 +29,13 @@ export const PAGE_META = {
       en: "Maintain each page's status/category dropdown options, including colour and order.",
     },
   },
+  admin: {
+    title: { zh: "管理後台", en: "Admin" },
+    desc: {
+      zh: "管理誰能登入看板、每個角色能做什麼，以及舊案件的封存。",
+      en: "Manage who can sign in, what each role may do, and archiving of old cases.",
+    },
+  },
   t1hoTest: {
     title: { zh: "T1 HO（Supabase 測試版）", en: "T1 HO (Supabase preview)" },
     desc: {
