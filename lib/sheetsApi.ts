@@ -54,6 +54,28 @@ async function resolveSheetTitle(client: JWT, spreadsheetId: string): Promise<st
   return match.properties.title;
 }
 
+/**
+ * Raw cell values for any sheet this service account can read, so the import
+ * can pull the HO sheet as well as the T1 HO one the board reads.
+ */
+export async function fetchSheetValues(spreadsheetId: string, gid?: string): Promise<string[][]> {
+  const client = getClient();
+  const res = await client.request<SpreadsheetMeta>({
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
+  });
+  const sheets = res.data.sheets ?? [];
+  const match = gid ? sheets.find((x) => String(x.properties.sheetId) === gid) : sheets[0];
+  if (!match) {
+    throw new Error(`找不到 gid=${gid} 的分頁，請確認 SHEET_GID 設定。`);
+  }
+  const values = await client.request<ValuesResponse>({
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+      match.properties.title
+    )}`,
+  });
+  return values.data.values ?? [];
+}
+
 export async function fetchViaSheetsApi(): Promise<CaseRow[]> {
   const spreadsheetId = process.env.SHEET_ID!;
   const client = getClient();

@@ -1,14 +1,16 @@
 import "server-only";
 import { getSupabaseClient } from "./supabaseClient";
-import { fetchViaSheetsApi, hasServiceAccountConfig } from "./sheetsApi";
+import { fetchSheetValues, hasServiceAccountConfig } from "./sheetsApi";
+import { parseCaseRows } from "./cases";
+import { parseHoSheetRows } from "./hoSheetSchema";
 import { resolveSupabaseUserId } from "./supabaseUsers";
-import type { CaseRow } from "./types";
+import type { SupaBoard } from "./supabaseCases";
 
 /**
- * Brings across cases and replies added to the T1 HO Google Sheet after the
- * original migration, for the changeover period when both are in use.
+ * Brings across cases and replies added to a Google Sheet after the original
+ * migration, for the changeover period when both are in use.
  *
- * Two rules make this safe to run as many times as you like, which is the
+ * Three rules make this safe to run as many times as you like, which is the
  * whole point — the original migration was run five times and left every
  * comment duplicated five over:
  *
@@ -17,18 +19,49 @@ import type { CaseRow } from "./types";
  *  2. A reply becomes a comment only if that case has no comment with the
  *     same text. Same key the de-duplication used, and it holds because a
  *     reply's text is what identifies it.
- *
- * Nothing here deletes or updates; it only inserts what's missing.
+ *  3. Nothing updates and nothing deletes; it only inserts what's missing.
  */
 
-const BOARD = "t1ho" as const;
+export interface SheetSource {
+  spreadsheetId: string;
+  gid?: string;
+}
+
+/** T1 HO is the sheet the board itself used to read; HO needs its own. */
+export function sheetSourceFor(board: SupaBoard): SheetSource | null {
+  if (board === "t1ho") {
+    const id = process.env.SHEET_ID;
+    return id ? { spreadsheetId: id, gid: process.env.SHEET_GID } : null;
+  }
+  const id = process.env.HO_SHEET_ID;
+  return id ? { spreadsheetId: id, gid: process.env.HO_SHEET_GID } : null;
+}
+
+/** One sheet row, already mapped onto the columns a case has. */
+interface MappedRow {
+  seq: string;
+  createDate: string;
+  updateDate: string;
+  content: string;
+  status: string;
+  dept: string | null;
+  hoType: string | null;
+  hoClass: string | null;
+  op: string | null;
+  cs: string | null;
+  issueTag: string | null;
+  relatedTicketLabel: string | null;
+  noteLabel: string | null;
+  /** Becomes a comment. The HO sheet keeps its updates inside the content
+   *  cell rather than a column of its own, so only T1 HO produces one. */
+  reply: string;
+}
 
 export interface ImportPlanCase {
   seq: string;
   date: string;
   status: string;
   content: string;
-  hasReply: boolean;
 }
 
 export interface ImportPlanComment {
@@ -37,14 +70,13 @@ export interface ImportPlanComment {
 }
 
 export interface ImportPlan {
+  board: SupaBoard;
   sheetRows: number;
-  /** Cases in the sheet that aren't on the board yet. */
   newCases: ImportPlanCase[];
-  /** Replies whose text isn't already a comment on that case. */
   newComments: ImportPlanComment[];
   /** Rows already fully represented — nothing to do. */
   unchanged: number;
-  /** Sheet rows whose case exists but couldn't be matched (no seq). */
+  /** Rows with no id, or a repeat of one already seen. */
   skipped: number;
 }
 
@@ -53,19 +85,80 @@ export interface ImportResult {
   commentsInserted: number;
 }
 
+const LEGACY_PREFIX = /^\[搬遷自舊 Sheet\]\n?/;
+
 function normalise(text: string): string {
   return text.replace(/\r\n/g, "\n").trim();
 }
 
-/** Sheet dates aren't all well-formed; keep what Postgres will accept. */
+function blankToNull(text: string): string | null {
+  const trimmed = text.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** Sheet dates aren't all well-formed; keep only what Postgres will accept. */
 function toDateOrNull(raw: string): string | null {
   const trimmed = raw.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  const match = trimmed.match(/^(\d{4})-(\d{2})(\d{2})$/);
-  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const compact = trimmed.match(/^(\d{4})-(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+  const slashed = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (slashed) {
+    return `${slashed[1]}-${slashed[2].padStart(2, "0")}-${slashed[3].padStart(2, "0")}`;
+  }
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString().slice(0, 10);
+}
+
+async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
+  const source = sheetSourceFor(board);
+  if (!source) {
+    throw new Error(
+      board === "t1ho"
+        ? "找不到 T1 HO 的 Sheet 設定（SHEET_ID）。"
+        : "找不到 HO 的 Sheet 設定，請在 Vercel 加上 HO_SHEET_ID（以及分頁的 HO_SHEET_GID）。"
+    );
+  }
+  const values = await fetchSheetValues(source.spreadsheetId, source.gid);
+
+  if (board === "t1ho") {
+    return parseCaseRows(values).map((r) => ({
+      seq: r.seq.trim(),
+      createDate: r.date,
+      updateDate: r.date,
+      content: normalise(r.note),
+      status: r.status.trim(),
+      dept: blankToNull(r.department),
+      hoType: null,
+      hoClass: null,
+      op: blankToNull(r.op),
+      cs: blankToNull(r.cs),
+      issueTag: blankToNull(r.issue),
+      relatedTicketLabel: null,
+      noteLabel: null,
+      reply: normalise(r.reply),
+    }));
+  }
+
+  return parseHoSheetRows(values).map((r) => ({
+    seq: r.seq,
+    createDate: r.date,
+    updateDate: r.updateDate || r.date,
+    content: normalise(r.content),
+    status: r.status,
+    dept: null,
+    hoType: blankToNull(r.type),
+    hoClass: blankToNull(r.classification),
+    op: blankToNull(r.op),
+    cs: blankToNull(r.cs),
+    issueTag: null,
+    relatedTicketLabel: blankToNull(r.relatedTicket),
+    noteLabel: blankToNull(r.note),
+    // The HO sheet folds its tracking updates into the content cell, so
+    // there's no separate reply to turn into a comment.
+    reply: "",
+  }));
 }
 
 interface ExistingCase {
@@ -73,7 +166,10 @@ interface ExistingCase {
   seq: string;
 }
 
-async function loadExisting(): Promise<{ bySeq: Map<string, ExistingCase>; bodiesByCase: Map<string, Set<string>> }> {
+async function loadExisting(board: SupaBoard): Promise<{
+  bySeq: Map<string, ExistingCase>;
+  bodiesByCase: Map<string, Set<string>>;
+}> {
   const supabase = getSupabaseClient();
   const PAGE = 1000;
 
@@ -82,7 +178,7 @@ async function loadExisting(): Promise<{ bySeq: Map<string, ExistingCase>; bodie
     const { data, error } = await supabase
       .from("cases")
       .select("id, seq")
-      .eq("board", BOARD)
+      .eq("board", board)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1)
       .returns<ExistingCase[]>();
@@ -109,9 +205,9 @@ async function loadExisting(): Promise<{ bySeq: Map<string, ExistingCase>; bodie
     for (const row of page) {
       if (!caseIds.has(row.case_id)) continue;
       const set = bodiesByCase.get(row.case_id) ?? new Set<string>();
-      // The migrated comments carry a prefix the board strips on display;
-      // compare on the same basis or every one looks new.
-      set.add(normalise(row.body.replace(/^\[搬遷自舊 Sheet\]\n?/, "")));
+      // Migrated comments carry a prefix the board strips on display; compare
+      // on the same basis or every one of them looks new.
+      set.add(normalise(row.body.replace(LEGACY_PREFIX, "")));
       bodiesByCase.set(row.case_id, set);
     }
     if (page.length < PAGE) break;
@@ -121,44 +217,33 @@ async function loadExisting(): Promise<{ bySeq: Map<string, ExistingCase>; bodie
 }
 
 /** Works out what an import would do, without writing anything. */
-export async function planSheetImport(): Promise<ImportPlan> {
+export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
   if (!hasServiceAccountConfig()) {
     throw new Error(
       "Google Sheets 服務帳戶未設定，請確認 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY / SHEET_ID 環境變數。"
     );
   }
 
-  const rows: CaseRow[] = await fetchViaSheetsApi();
-  const { bySeq, bodiesByCase } = await loadExisting();
-
-  const plan: ImportPlan = { sheetRows: rows.length, newCases: [], newComments: [], unchanged: 0, skipped: 0 };
-  const seenSeq = new Set<string>();
+  const [rows, existing] = await Promise.all([readSheet(board), loadExisting(board)]);
+  const plan: ImportPlan = { board, sheetRows: rows.length, newCases: [], newComments: [], unchanged: 0, skipped: 0 };
+  const seen = new Set<string>();
 
   for (const row of rows) {
-    const seq = row.seq.trim();
-    if (!seq || seenSeq.has(seq)) {
+    if (!row.seq || seen.has(row.seq)) {
       plan.skipped += 1;
       continue;
     }
-    seenSeq.add(seq);
+    seen.add(row.seq);
 
-    const reply = normalise(row.reply);
-    const existing = bySeq.get(seq);
-
-    if (!existing) {
-      plan.newCases.push({
-        seq,
-        date: row.date.trim(),
-        status: row.status.trim(),
-        content: normalise(row.note),
-        hasReply: reply.length > 0,
-      });
-      if (reply) plan.newComments.push({ seq, body: reply });
+    const match = existing.bySeq.get(row.seq);
+    if (!match) {
+      plan.newCases.push({ seq: row.seq, date: row.createDate, status: row.status, content: row.content });
+      if (row.reply) plan.newComments.push({ seq: row.seq, body: row.reply });
       continue;
     }
 
-    if (reply && !(bodiesByCase.get(existing.id)?.has(reply) ?? false)) {
-      plan.newComments.push({ seq, body: reply });
+    if (row.reply && !(existing.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
+      plan.newComments.push({ seq: row.seq, body: row.reply });
     } else {
       plan.unchanged += 1;
     }
@@ -168,47 +253,64 @@ export async function planSheetImport(): Promise<ImportPlan> {
 }
 
 /** Applies the plan. Inserts only; never updates or deletes. */
-export async function applySheetImport(importerEmail: string): Promise<ImportResult> {
-  const plan = await planSheetImport();
+export async function applySheetImport(board: SupaBoard, importerEmail: string): Promise<ImportResult> {
+  const [rows, existingBefore] = await Promise.all([readSheet(board), loadExisting(board)]);
   const supabase = getSupabaseClient();
   const authorId = await resolveSupabaseUserId(importerEmail);
+  const today = new Date().toISOString().slice(0, 10);
 
-  let casesInserted = 0;
-  if (plan.newCases.length > 0) {
-    const rows = plan.newCases.map((c) => ({
-      board: BOARD,
-      seq: c.seq,
-      create_date: toDateOrNull(c.date) ?? new Date().toISOString().slice(0, 10),
-      update_date: toDateOrNull(c.date) ?? new Date().toISOString().slice(0, 10),
-      content: c.content,
-      status: c.status,
-      priority: "",
-      archived: false,
-      created_by: authorId,
-    }));
-    for (let i = 0; i < rows.length; i += 200) {
-      const { data, error } = await supabase
-        .from("cases")
-        .insert(rows.slice(i, i + 200))
-        .select("id")
-        .returns<{ id: string }[]>();
-      if (error) throw new Error(`新增 cases 失敗: ${error.message}`);
-      casesInserted += (data ?? []).length;
+  const seen = new Set<string>();
+  const toInsert: MappedRow[] = [];
+  const replies: { seq: string; body: string }[] = [];
+
+  for (const row of rows) {
+    if (!row.seq || seen.has(row.seq)) continue;
+    seen.add(row.seq);
+    const match = existingBefore.bySeq.get(row.seq);
+    if (!match) {
+      toInsert.push(row);
+      if (row.reply) replies.push({ seq: row.seq, body: row.reply });
+    } else if (row.reply && !(existingBefore.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
+      replies.push({ seq: row.seq, body: row.reply });
     }
   }
 
-  // Re-read after inserting so comments can attach to the new cases too.
-  const { bySeq } = await loadExisting();
+  let casesInserted = 0;
+  for (let i = 0; i < toInsert.length; i += 200) {
+    const chunk = toInsert.slice(i, i + 200).map((r) => ({
+      board,
+      seq: r.seq,
+      create_date: toDateOrNull(r.createDate) ?? today,
+      update_date: toDateOrNull(r.updateDate) ?? toDateOrNull(r.createDate) ?? today,
+      dept: r.dept,
+      ho_type: r.hoType,
+      ho_class: r.hoClass,
+      op: r.op,
+      cs: r.cs ?? "",
+      content: r.content,
+      status: r.status,
+      priority: "",
+      issue_tag: r.issueTag,
+      related_ticket_label: r.relatedTicketLabel,
+      note_label: r.noteLabel,
+      archived: false,
+      created_by: authorId,
+    }));
+    const { data, error } = await supabase.from("cases").insert(chunk).select("id").returns<{ id: string }[]>();
+    if (error) throw new Error(`新增 cases 失敗: ${error.message}`);
+    casesInserted += (data ?? []).length;
+  }
 
-  let commentsInserted = 0;
-  const commentRows = plan.newComments
-    .map((c) => {
-      const target = bySeq.get(c.seq);
-      if (!target) return null;
-      return { case_id: target.id, author_id: authorId, body: c.body };
+  // Re-read so replies can attach to the cases just inserted.
+  const { bySeq } = await loadExisting(board);
+  const commentRows = replies
+    .map((r) => {
+      const target = bySeq.get(r.seq);
+      return target ? { case_id: target.id, author_id: authorId, body: r.body } : null;
     })
     .filter((r): r is { case_id: string; author_id: string; body: string } => r !== null);
 
+  let commentsInserted = 0;
   for (let i = 0; i < commentRows.length; i += 200) {
     const { data, error } = await supabase
       .from("comments")

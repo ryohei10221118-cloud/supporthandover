@@ -33,7 +33,12 @@ const STRINGS = {
     zh: "只會新增，不會修改或刪除任何東西：已存在的案件（同一個序列）完全不動，所以你在工具上改過的內容不會被 Sheet 蓋掉；回覆只有在該案件還沒有一模一樣的留言時才會新增。因此重複執行是安全的。",
     en: "Inserts only — nothing is updated or deleted. A case that already exists (same seq) is left untouched, so edits made in the tool are never overwritten, and a reply is added only if that case has no identical comment. Running it more than once is safe.",
   },
+  importBoard: { zh: "看板", en: "Board" },
   importPreview: { zh: "試算", en: "Preview" },
+  importHoNote: {
+    zh: "HO 的 Sheet 把追蹤狀況寫在同一個內容欄位裡，沒有獨立的回覆欄，所以 HO 只會補案件、不會產生留言。",
+    en: "The HO sheet keeps its tracking updates inside the content cell rather than a column of its own, so HO brings across cases only, no comments.",
+  },
   importRun: { zh: "執行匯入", en: "Run import" },
   importSheetRows: { zh: "Sheet 上的資料列", en: "Rows in the sheet" },
   importNewCases: { zh: "將新增的案件", en: "Cases to add" },
@@ -334,15 +339,17 @@ export default function AdminPanel({
 
   // --- Sheet 匯入 ---
   const [plan, setPlan] = useState<ImportPlan | null>(null);
+  const [importBoard, setImportBoard] = useState<"t1ho" | "ho">("t1ho");
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
 
   async function previewImport() {
-    const data = await call("/api/admin/sheet-import", "GET");
+    setPlan(null);
+    const data = await call(`/api/admin/sheet-import?board=${importBoard}`, "GET");
     if (data) setPlan(data as unknown as ImportPlan);
   }
 
   async function runImport() {
-    const data = await call("/api/admin/sheet-import", "POST");
+    const data = await call(`/api/admin/sheet-import?board=${importBoard}`, "POST");
     setImportConfirmOpen(false);
     if (!data) return;
     setPlan(data.plan as unknown as ImportPlan);
@@ -728,6 +735,20 @@ export default function AdminPanel({
             </div>
 
             <div className="field-row">
+              <label htmlFor="import-board">{t(lang, "importBoard")}</label>
+              <select
+                id="import-board"
+                className="role-select"
+                value={importBoard}
+                disabled={busy}
+                onChange={(e) => {
+                  setImportBoard(e.target.value as "t1ho" | "ho");
+                  setPlan(null);
+                }}
+              >
+                <option value="t1ho">T1 HO</option>
+                <option value="ho">HO</option>
+              </select>
               <button type="button" className="ghost" disabled={busy} onClick={previewImport}>
                 {busy ? t(lang, "saving") : t(lang, "importPreview")}
               </button>
@@ -737,6 +758,8 @@ export default function AdminPanel({
                 </button>
               )}
             </div>
+
+            {importBoard === "ho" && <p className="hint">{t(lang, "importHoNote")}</p>}
 
             {plan && (
               <>
