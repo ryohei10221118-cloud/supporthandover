@@ -3120,3 +3120,27 @@ button.attach-chip {
 .table-wrap::-webkit-scrollbar-corner {
   background: var(--surface);
 }
+
+/* The "→ HO0123" marker next to a status, linking the two halves of a
+   handover. Deliberately a small chip rather than its own column: only the
+   handful of cases that were moved carry one. */
+.move-link {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: help;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+/* The move dialog shows the full case content, which can be long. */
+.modal .readonly-field {
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}

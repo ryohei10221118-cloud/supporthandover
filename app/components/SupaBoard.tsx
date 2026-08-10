@@ -15,6 +15,7 @@ import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
 import ImageLightbox, { isViewableImage } from "./ImageLightbox";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
 import NewCaseModal from "./NewCaseModal";
+import MoveToHoModal from "./MoveToHoModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
 import OptionBadge, { type BadgeOption } from "./OptionBadge";
 import { FIELD_LIST_KEY, type OptionLists } from "@/lib/optionLists";
@@ -47,6 +48,10 @@ const STRINGS = {
   },
   loadAll: { zh: (n: number) => `載入全部 ${n.toLocaleString()} 筆`, en: (n: number) => `Load all ${n.toLocaleString()}` },
   loading: { zh: "載入中…", en: "Loading…" },
+  movedTo: { zh: (seq: string) => `→ ${seq}`, en: (seq: string) => `→ ${seq}` },
+  movedFrom: { zh: (seq: string) => `← ${seq}`, en: (seq: string) => `← ${seq}` },
+  movedToTitle: { zh: (seq: string) => `已轉移到 HO ${seq}`, en: (seq: string) => `Moved to HO ${seq}` },
+  movedFromTitle: { zh: (seq: string) => `轉自 T1 HO ${seq}`, en: (seq: string) => `Came from T1 HO ${seq}` },
   newestFirst: { zh: "↓新到舊", en: "↓Newest" },
   oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
   addUpdate: { zh: "+ 更新", en: "+ Update" },
@@ -863,6 +868,18 @@ export default function SupaBoard({
   }
 
   async function saveField(c: SupaCaseRow, field: string, value: string) {
+    // Handing a case to HO is a different operation from setting a status,
+    // so it takes the confirm path instead of writing straight through.
+    if (
+      board === "t1ho" &&
+      field === "status" &&
+      value.trim().toLowerCase() === "move to ho" &&
+      !c.movedToCaseId
+    ) {
+      setMoveError(null);
+      setMoveTarget(c);
+      return;
+    }
     setFieldSaving(`${c.id}-${field}`);
     setFieldError(null);
     try {
@@ -907,6 +924,49 @@ export default function SupaBoard({
       );
     } finally {
       setFieldSaving(null);
+    }
+  }
+
+  // --- Move to HO ---
+  // Changing the status to "Move to HO" doesn't just set a status: it hands
+  // the case to the other board, so it goes through a confirm step that also
+  // collects the two fields HO needs and T1 HO doesn't have.
+  const [moveTarget, setMoveTarget] = useState<SupaCaseRow | null>(null);
+  const [moveSubmitting, setMoveSubmitting] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+
+  async function confirmMove(hoType: string, hoClass: string) {
+    if (!moveTarget) return;
+    setMoveSubmitting(true);
+    setMoveError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/move-to-ho", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: moveTarget.id, hoType, hoClass }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMoveError(data.error || t(lang, "saveFailed"));
+        return;
+      }
+      setCases((prev) =>
+        prev.map((row) =>
+          row.id === moveTarget.id
+            ? {
+                ...row,
+                status: data.status,
+                updateDate: data.updateDate ?? row.updateDate,
+                movedToCaseId: data.hoCase?.id ?? null,
+                movedToSeq: data.hoCase?.seq ?? null,
+                fieldEdits: [...row.fieldEdits, newEdit("status", row.status)],
+              }
+            : row
+        )
+      );
+      setMoveTarget(null);
+    } finally {
+      setMoveSubmitting(false);
     }
   }
 
@@ -1446,6 +1506,16 @@ export default function SupaBoard({
               isSubmitting={fieldSaving === `${c.id}-status`}
               onChange={(next) => saveField(c, "status", next)}
             />
+            {c.movedToSeq && (
+              <span className="move-link" title={t(lang, "movedToTitle", c.movedToSeq)}>
+                {t(lang, "movedTo", c.movedToSeq)}
+              </span>
+            )}
+            {c.movedFromSeq && (
+              <span className="move-link" title={t(lang, "movedFromTitle", c.movedFromSeq)}>
+                {t(lang, "movedFrom", c.movedFromSeq)}
+              </span>
+            )}
             {fieldTag(c, "status")}
           </td>
         );
@@ -1716,6 +1786,18 @@ export default function SupaBoard({
 
       {lightbox && (
         <ImageLightbox url={lightbox.url} name={lightbox.fileName} onClose={() => setLightbox(null)} />
+      )}
+
+      {moveTarget && (
+        <MoveToHoModal
+          caseRow={moveTarget}
+          optionLists={optionLists}
+          lang={lang}
+          submitting={moveSubmitting}
+          error={moveError}
+          onCancel={() => setMoveTarget(null)}
+          onConfirm={confirmMove}
+        />
       )}
 
       {newCaseOpen && (

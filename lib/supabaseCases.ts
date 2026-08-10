@@ -65,6 +65,12 @@ export interface SupaCaseRow {
   priority: string;
   issueTag: string | null;
   updateDate: string;
+  // Set on a T1 HO case that was moved to HO: the HO case it became, and its
+  // number for the link shown next to the status.
+  movedToCaseId: string | null;
+  movedToSeq: string | null;
+  /** Set on an HO case that came from T1 HO: the T1 HO case's number. */
+  movedFromSeq: string | null;
   comments: SupaComment[]; // oldest first
   // Screenshots added when the case was created — the ones tied to a comment
   // live on that comment instead.
@@ -106,6 +112,7 @@ interface CaseDbRow {
   priority: string;
   issue_tag: string | null;
   update_date: string;
+  moved_to_case_id: string | null;
 }
 
 interface CommentDbRow {
@@ -219,7 +226,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
   const supabase = getSupabaseClient();
   const timer = makeTimer(`board:${board}:${scope}`);
   const CASE_COLUMNS =
-    "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, related_ticket_url, note_label, note_url, status, priority, issue_tag, update_date";
+    "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, related_ticket_url, note_label, note_url, status, priority, issue_tag, update_date, moved_to_case_id";
 
   // An index of the whole board first: three small columns, enough to know
   // the real total and to decide which rows are worth loading in full.
@@ -443,6 +450,35 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
     commentsByCase.set(c.case_id, list);
   }
 
+  // The other end of a "Move to HO" link sits on the other board, so it
+  // isn't in the rows just loaded — one small lookup either way. Only cases
+  // that were actually moved are involved, so this stays tiny.
+  const linkedSeqById = new Map<string, string>();
+  const movedFromSeqByTarget = new Map<string, string>();
+  if (board === "t1ho") {
+    const targetIds = caseRows.map((r) => r.moved_to_case_id).filter((id): id is string => !!id);
+    for (let i = 0; i < targetIds.length; i += CHUNK) {
+      const { data, error } = await supabase
+        .from("cases")
+        .select("id, seq")
+        .in("id", targetIds.slice(i, i + CHUNK))
+        .returns<{ id: string; seq: string }[]>();
+      if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
+      for (const row of data ?? []) linkedSeqById.set(row.id, row.seq);
+    }
+  } else {
+    for (let i = 0; i < caseIds.length; i += CHUNK) {
+      const { data, error } = await supabase
+        .from("cases")
+        .select("seq, moved_to_case_id")
+        .in("moved_to_case_id", caseIds.slice(i, i + CHUNK))
+        .returns<{ seq: string; moved_to_case_id: string }[]>();
+      if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
+      for (const row of data ?? []) movedFromSeqByTarget.set(row.moved_to_case_id, row.seq);
+    }
+  }
+  timer.mark("links");
+
   const cases = caseRows.map((r) => {
     const daysOpen = daysSince(r.create_date);
     const completed = isCompletedWith(closed, r.status);
@@ -466,6 +502,9 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
       priority: r.priority,
       issueTag: r.issue_tag,
       updateDate: r.update_date,
+      movedToCaseId: r.moved_to_case_id,
+      movedToSeq: r.moved_to_case_id ? (linkedSeqById.get(r.moved_to_case_id) ?? null) : null,
+      movedFromSeq: movedFromSeqByTarget.get(r.id) ?? null,
       comments,
       attachments: attachmentsByCase.get(r.id) ?? [],
       fieldEdits: fieldEditsByCase.get(r.id) ?? [],
