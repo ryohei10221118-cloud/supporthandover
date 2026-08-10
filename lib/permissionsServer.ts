@@ -9,6 +9,7 @@ import {
   fallbackRole,
   isPermissionKey,
   noPermissions,
+  PERMISSION_KEYS,
   type ClientSession,
   type Permissions,
   type SessionRole,
@@ -84,7 +85,21 @@ export async function fetchUsers(): Promise<AdminUserRow[]> {
   }));
 }
 
+/**
+ * Admin is every permission, decided here rather than read from the table.
+ *
+ * 權限設定 shows admin as a padlock — "always on, not editable" — but the
+ * server used to answer from role_permissions like any other role, so the two
+ * only agreed as long as somebody remembered to seed a row for each new key.
+ * Miss one and admins quietly lack a permission the UI swears they have.
+ */
+function allPermissions(): Permissions {
+  return Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true])) as Permissions;
+}
+
 async function loadPermissionsFor(roleKey: string): Promise<Permissions> {
+  if (roleKey === "admin") return allPermissions();
+
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("role_permissions")
@@ -119,6 +134,10 @@ export async function fetchAllRolePermissions(): Promise<Record<string, Permissi
     if (!out[row.role_key]) out[row.role_key] = noPermissions();
     if (isPermissionKey(row.permission_key)) out[row.role_key][row.permission_key] = row.granted;
   }
+  // Same rule as loadPermissionsFor: admin is all of them, whatever the table
+  // happens to hold. This feeds the role-preview switcher, so previewing as
+  // admin has to show what an admin actually gets.
+  out.admin = allPermissions();
   return out;
 }
 

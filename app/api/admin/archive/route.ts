@@ -53,6 +53,7 @@ export async function POST() {
       .from("cases")
       .update({ archived: true })
       .eq("archived", false)
+      .is("deleted_at", null)
       .lt("create_date", cutoff);
     if (error) throw new Error(error.message);
 

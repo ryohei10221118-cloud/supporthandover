@@ -1957,6 +1957,42 @@ tbody td {
   text-decoration: underline;
 }
 
+.comment-edit-btn.danger:hover {
+  color: var(--overdue);
+}
+
+/* Sits next to the case number and stays out of the way until the row is
+   pointed at — deleting is rare, and a delete icon on every row of a board
+   people scan all day reads as an invitation. */
+.seq-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.row-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+tr:hover .row-delete-btn,
+.row-delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.row-delete-btn:hover {
+  color: var(--overdue);
+  background: color-mix(in srgb, var(--overdue) 12%, transparent);
+}
+
 .comment-edit-form {
   display: flex;
   gap: 6px;

@@ -239,7 +239,8 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
       .from("cases")
       .select("id", { count: "exact", head: true })
       .eq("board", board)
-      .eq("archived", false),
+      .eq("archived", false)
+      .is("deleted_at", null),
     fetchClosedStatuses(),
   ]);
   if (countError) throw new Error(`Supabase 讀取 cases 失敗: ${countError.message}`);
@@ -257,6 +258,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
         .select("id, status, create_date")
         .eq("board", board)
         .eq("archived", false)
+        .is("deleted_at", null)
         .order("id", { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
         .returns<{ id: string; status: string; create_date: string }[]>()

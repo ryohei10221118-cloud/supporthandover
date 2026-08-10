@@ -26,7 +26,8 @@ async function loadDashboardCases(): Promise<DashboardCase[]> {
   const { count, error: countError } = await supabase
     .from("cases")
     .select("id", { count: "exact", head: true })
-    .eq("archived", false);
+    .eq("archived", false)
+    .is("deleted_at", null);
   if (countError) throw new Error(countError.message);
 
   const total = count ?? 0;
@@ -41,6 +42,7 @@ async function loadDashboardCases(): Promise<DashboardCase[]> {
         .from("cases")
         .select(COLUMNS)
         .eq("archived", false)
+        .is("deleted_at", null)
         .order("id", { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
         .returns<

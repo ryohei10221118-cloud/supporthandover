@@ -16,6 +16,7 @@ export const PERMISSION_KEYS = [
   "comment.t1ho",
   "comment.ho",
   "case.create",
+  "case.delete",
   "page.dashboard",
   "page.lists",
 ] as const;
@@ -69,6 +70,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, { zh: string; en: string }
   "edit.content": { zh: "編輯內容", en: "Edit content" },
   "edit.cs": { zh: "編輯 CS", en: "Edit CS" },
   "case.create": { zh: "新增案件", en: "Create cases" },
+  "case.delete": { zh: "刪除案件", en: "Delete cases" },
   "page.dashboard": { zh: "查看分析儀表板", en: "View analytics dashboard" },
   "page.lists": { zh: "選項管理（維護下拉清單）", en: "Option lists (maintain dropdowns)" },
 };
@@ -86,6 +88,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       "edit.content",
       "edit.cs",
       "case.create",
+      "case.delete",
       "page.dashboard",
       "page.lists",
     ],

@@ -40,6 +40,7 @@ export async function fetchArchiveStatus(): Promise<ArchiveStatus> {
     .from("cases")
     .select("id", { count: "exact", head: true })
     .eq("archived", false)
+    .is("deleted_at", null)
     .lt("create_date", cutoff);
   if (casesError) throw new Error(casesError.message);
 
@@ -73,6 +74,7 @@ export async function fetchArchiveStatus(): Promise<ArchiveStatus> {
         .select("id")
         .in("id", ids.slice(i, i + CHUNK))
         .eq("archived", false)
+        .is("deleted_at", null)
         .lt("create_date", cutoff)
         .returns<{ id: string }[]>();
       if (error) throw new Error(error.message);

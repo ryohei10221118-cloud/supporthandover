@@ -79,3 +79,83 @@ export async function POST(req: Request) {
     );
   }
 }
+
+const BUCKET = "case-attachments";
+
+/**
+ * Deletes a comment, for real — unlike a case, which is only marked deleted.
+ *
+ * A comment is a leaf: only its own edit history and screenshots hang off it,
+ * and both go with it here. Keeping it as a hidden row would also mean the
+ * Sheet import still saw its text and refused to bring the reply back, so
+ * "delete it and re-import" — the reason this exists — wouldn't work.
+ *
+ * Who may: the author, or anyone with 刪除案件. Editing a comment is open to
+ * everyone with comment rights because an edit keeps its history; a delete
+ * doesn't, so it's held to a narrower rule.
+ */
+export async function DELETE(req: Request) {
+  const role = await getSessionRole();
+  if (!role) {
+    return NextResponse.json({ error: "請先完成信箱驗證" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => null);
+  const commentId = typeof body?.commentId === "string" ? body.commentId : "";
+  if (!commentId) return NextResponse.json({ error: "留言資訊有誤" }, { status: 400 });
+
+  try {
+    const supabase = getSupabaseClient();
+
+    const { data: comment, error: readError } = await supabase
+      .from("comments")
+      .select("id, author_id")
+      .eq("id", commentId)
+      .maybeSingle<{ id: string; author_id: string }>();
+    if (readError) throw new Error(readError.message);
+    if (!comment) return NextResponse.json({ error: "找不到這則留言" }, { status: 404 });
+
+    const userId = await resolveSupabaseUserId(role.email);
+    if (comment.author_id !== userId && !role.permissions["case.delete"]) {
+      return NextResponse.json({ error: "只能刪除自己的留言" }, { status: 403 });
+    }
+
+    // Screenshots first: the rows point at storage objects, and dropping the
+    // rows without the files leaves them paid for and unreachable.
+    const { data: shots, error: shotsError } = await supabase
+      .from("attachments")
+      .select("id, storage_path")
+      .eq("comment_id", commentId)
+      .returns<{ id: string; storage_path: string | null }[]>();
+    if (shotsError) throw new Error(shotsError.message);
+
+    const paths = (shots ?? []).map((s) => s.storage_path).filter((p): p is string => !!p);
+    if (paths.length > 0) {
+      const { error: storageError } = await supabase.storage.from(BUCKET).remove(paths);
+      // The rows still go; an orphaned file costs storage, an orphaned row
+      // shows up as a broken image on the board.
+      if (storageError) console.error("comment delete: storage remove failed", storageError.message);
+    }
+    if ((shots ?? []).length > 0) {
+      const { error } = await supabase.from("attachments").delete().eq("comment_id", commentId);
+      if (error) throw new Error(error.message);
+    }
+
+    const { error: historyError } = await supabase
+      .from("comment_edit_history")
+      .delete()
+      .eq("comment_id", commentId);
+    if (historyError) throw new Error(historyError.message);
+
+    const { error } = await supabase.from("comments").delete().eq("id", commentId);
+    if (error) throw new Error(error.message);
+
+    revalidateTag(CASES_TAG, "max");
+    return NextResponse.json({ ok: true, commentId });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "刪除失敗" },
+      { status: 502 }
+    );
+  }
+}

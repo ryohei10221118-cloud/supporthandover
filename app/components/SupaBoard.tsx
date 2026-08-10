@@ -14,6 +14,7 @@ import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } 
 import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
 import ImageLightbox, { isViewableImage } from "./ImageLightbox";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
+import Modal from "./Modal";
 import NewCaseModal from "./NewCaseModal";
 import MoveToHoModal from "./MoveToHoModal";
 import { LinkEditModal, type LinkKind } from "./LinkEditModal";
@@ -59,6 +60,24 @@ const STRINGS = {
   cancel: { zh: "取消", en: "Cancel" },
   editedTag: { zh: "已編輯", en: "edited" },
   editComment: { zh: "編輯", en: "Edit" },
+  deleteComment: { zh: "刪除", en: "Delete" },
+  deleteCommentTitle: { zh: "刪除這則留言？", en: "Delete this comment?" },
+  deleteCommentBody: {
+    zh: "留言、它的編輯紀錄跟截圖都會一起刪掉，而且沒辦法復原。",
+    en: "The comment, its edit history and its screenshots all go, and this can't be undone.",
+  },
+  deleteCase: { zh: "刪除案件", en: "Delete case" },
+  deleteCaseTitle: {
+    zh: (seq: string) => `刪除案件 ${seq}？`,
+    en: (seq: string) => `Delete case ${seq}?`,
+  },
+  deleteCaseBody: {
+    zh: "案件會從兩個看板上消失，留言與紀錄都會保留著。要救回來的話跟我說，在 Supabase 一行就能還原。",
+    en: "It disappears from the boards; its comments and history are kept. It can be restored with one line in Supabase.",
+  },
+  deleteConfirm: { zh: "確定刪除", en: "Delete" },
+  deleting: { zh: "刪除中...", en: "Deleting..." },
+  deleteFailed: { zh: "刪除失敗", en: "Failed to delete" },
   // Row-level history entries — what happened, not what it said.
   commentAdded: { zh: "新增留言", en: "Comment added" },
   commentEdited: { zh: "編輯留言", en: "Comment edited" },
@@ -492,6 +511,8 @@ function CommentThread({
   onSubmitComment,
   canComment,
   onOpenImage,
+  onDeleteComment,
+  canDeleteComment,
 }: {
   comments: SupaComment[];
   cellKey: string;
@@ -516,6 +537,8 @@ function CommentThread({
   onSubmitComment: () => void;
   canComment: boolean;
   onOpenImage: (a: SupaAttachment) => void;
+  onDeleteComment: (c: SupaComment) => void;
+  canDeleteComment: (c: SupaComment) => boolean;
 }) {
   const isExpanded = expanded.has(cellKey);
   // Collapsed threads show only the first comment (the mockup's
@@ -546,6 +569,15 @@ function CommentThread({
                 {!isEditingThis && canComment && (
                   <button type="button" className="comment-edit-btn" onClick={() => onStartEdit(c.id, c.body)}>
                     {t(lang, "editComment")}
+                  </button>
+                )}
+                {!isEditingThis && canDeleteComment(c) && (
+                  <button
+                    type="button"
+                    className="comment-edit-btn danger"
+                    onClick={() => onDeleteComment(c)}
+                  >
+                    {t(lang, "deleteComment")}
                   </button>
                 )}
                 {isEditingThis ? (
@@ -977,6 +1009,69 @@ export default function SupaBoard({
     }
   }
 
+  // --- Deleting ---
+  // Both go through a confirm step. The case one is recoverable and says so;
+  // the comment one isn't, and says that instead.
+  const [deleteCaseTarget, setDeleteCaseTarget] = useState<SupaCaseRow | null>(null);
+  const [deleteCommentTarget, setDeleteCommentTarget] = useState<SupaComment | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function canDeleteComment(c: SupaComment): boolean {
+    return perms["case.delete"] || (!!session?.email && c.authorEmail === session.email);
+  }
+
+  async function confirmDeleteCase() {
+    if (!deleteCaseTarget) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/case", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: deleteCaseTarget.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteError(data.error || t(lang, "deleteFailed"));
+        return;
+      }
+      setCases((prev) => prev.filter((row) => row.id !== deleteCaseTarget.id));
+      setDeleteCaseTarget(null);
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }
+
+  async function confirmDeleteComment() {
+    if (!deleteCommentTarget) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/cases-supabase/comment", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentId: deleteCommentTarget.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteError(data.error || t(lang, "deleteFailed"));
+        return;
+      }
+      const goneId = deleteCommentTarget.id;
+      setCases((prev) =>
+        prev.map((row) =>
+          row.comments.some((c) => c.id === goneId)
+            ? { ...row, comments: row.comments.filter((c) => c.id !== goneId) }
+            : row
+        )
+      );
+      setDeleteCommentTarget(null);
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }
+
   // --- Related ticket / Note link editor ---
   const [linkTarget, setLinkTarget] = useState<{ caseId: string; kind: LinkKind } | null>(null);
   const [linkSaving, setLinkSaving] = useState(false);
@@ -1364,7 +1459,29 @@ export default function SupaBoard({
   function renderCell(colKey: ColumnKey, c: SupaCaseRow, rowKey: string): ReactNode {
     switch (colKey) {
       case "seq":
-        return <td key={colKey}>{c.seq}</td>;
+        return (
+          <td key={colKey}>
+            <span className="seq-cell">
+              {c.seq}
+              {perms["case.delete"] && (
+                <button
+                  type="button"
+                  className="row-delete-btn"
+                  title={t(lang, "deleteCase")}
+                  aria-label={`${t(lang, "deleteCase")} ${c.seq}`}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteCaseTarget(c);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                  </svg>
+                </button>
+              )}
+            </span>
+          </td>
+        );
       case "date":
         return <td key={colKey}>{c.date}</td>;
       case "group":
@@ -1467,6 +1584,11 @@ export default function SupaBoard({
             commentError={commentError}
             onSubmitComment={() => submitComment(c)}
             onOpenImage={setLightbox}
+            onDeleteComment={(cm) => {
+              setDeleteError(null);
+              setDeleteCommentTarget(cm);
+            }}
+            canDeleteComment={canDeleteComment}
           />
         );
       case "relatedTicket":
@@ -1805,6 +1927,57 @@ export default function SupaBoard({
           onCancel={() => setMoveTarget(null)}
           onConfirm={confirmMove}
         />
+      )}
+
+      {deleteCaseTarget && (
+        <Modal
+          title={t(lang, "deleteCaseTitle", deleteCaseTarget.seq)}
+          onClose={() => setDeleteCaseTarget(null)}
+          actions={
+            <>
+              <button type="button" className="ghost" onClick={() => setDeleteCaseTarget(null)}>
+                {t(lang, "cancel")}
+              </button>
+              <button type="button" className="primary danger" disabled={deleteSubmitting} onClick={confirmDeleteCase}>
+                {deleteSubmitting ? t(lang, "deleting") : t(lang, "deleteConfirm")}
+              </button>
+            </>
+          }
+        >
+          <p className="hint" style={{ marginTop: 0 }}>
+            {t(lang, "deleteCaseBody")}
+          </p>
+          <div className="readonly-field">{deleteCaseTarget.content || "—"}</div>
+          {deleteError && <div className="banner">{deleteError}</div>}
+        </Modal>
+      )}
+
+      {deleteCommentTarget && (
+        <Modal
+          title={t(lang, "deleteCommentTitle")}
+          onClose={() => setDeleteCommentTarget(null)}
+          actions={
+            <>
+              <button type="button" className="ghost" onClick={() => setDeleteCommentTarget(null)}>
+                {t(lang, "cancel")}
+              </button>
+              <button
+                type="button"
+                className="primary danger"
+                disabled={deleteSubmitting}
+                onClick={confirmDeleteComment}
+              >
+                {deleteSubmitting ? t(lang, "deleting") : t(lang, "deleteConfirm")}
+              </button>
+            </>
+          }
+        >
+          <p className="hint" style={{ marginTop: 0 }}>
+            {t(lang, "deleteCommentBody")}
+          </p>
+          <div className="readonly-field">{deleteCommentTarget.body}</div>
+          {deleteError && <div className="banner">{deleteError}</div>}
+        </Modal>
       )}
 
       {newCaseOpen && (
