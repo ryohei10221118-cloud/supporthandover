@@ -75,10 +75,23 @@ export interface SupaCaseRow {
   daysOpen: number | null;
 }
 
-// Best-effort per board — nobody has confirmed a formal "done" vocabulary for
-// HO yet, this mirrors the status legend from the planning doc.
-const T1HO_COMPLETED = new Set(["replied", "closed"]);
-const HO_COMPLETED = new Set(["done", "closed for us"]);
+/**
+ * Which statuses mean "nothing left to do on this board", checked against the
+ * statuses actually present in the data rather than guessed from a legend:
+ *
+ * - t1ho "Move to HO": the case has been handed to the HO board, which tracks
+ *   it from there. Counting it as open here too would have the same piece of
+ *   work pending on two boards at once.
+ * - ho "Closed": plainly finished, and t1ho already treated it that way — it
+ *   was simply missing from this list.
+ * - ho "Note" / "Procedure": not progress states at all but kinds of entry —
+ *   a reference note isn't work waiting on someone. Between them they were
+ *   808 of HO's 865 supposedly-pending cases.
+ *
+ * A blank status stays "not done": it needs someone to look at it.
+ */
+const T1HO_COMPLETED = new Set(["replied", "closed", "move to ho"]);
+const HO_COMPLETED = new Set(["done", "closed for us", "closed", "note", "procedure"]);
 const OVERDUE_DAYS = 3;
 
 function isCompleted(board: SupaBoard, status: string): boolean {
