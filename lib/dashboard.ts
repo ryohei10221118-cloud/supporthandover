@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "./supabaseClient";
 
 // Everything the dashboard charts from, pulled once: create date, board, and
@@ -17,7 +18,7 @@ export interface DashboardCase {
   issueTag: string;
 }
 
-export async function fetchDashboardCases(): Promise<DashboardCase[]> {
+async function loadDashboardCases(): Promise<DashboardCase[]> {
   const supabase = getSupabaseClient();
   const COLUMNS = "board, create_date, dept, ho_type, status, priority, issue_tag";
 
@@ -72,3 +73,9 @@ export async function fetchDashboardCases(): Promise<DashboardCase[]> {
   }
   return rows;
 }
+
+// The dashboard page is per-user (it checks permissions), but the numbers
+// it charts are the same for everyone — so cache the query, not the page.
+export const fetchDashboardCases = unstable_cache(loadDashboardCases, ["dashboard-cases"], {
+  revalidate: 30,
+});

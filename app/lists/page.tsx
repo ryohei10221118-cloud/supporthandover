@@ -25,7 +25,7 @@ export default async function ListsPage() {
     const [l, u, g] = await Promise.all([fetchOptionLists(), fetchOptionUsage(), fetchGlobalListKeys()]);
     lists = l;
     usage = u;
-    globalKeys = [...g];
+    globalKeys = g;
   } catch (err) {
     error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
   }

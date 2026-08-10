@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
+import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,18 @@ export async function POST(req: Request) {
     const supabase = getSupabaseClient();
     const editedAt = new Date().toISOString();
 
+    // Keep the version being replaced, so the "已編輯" marker can show what
+    // it used to say and who changed it.
+    const { data: before, error: beforeError } = await supabase
+      .from("comments")
+      .select("body")
+      .eq("id", commentId)
+      .maybeSingle<{ body: string }>();
+    if (beforeError) throw new Error(beforeError.message);
+    if (!before) {
+      return NextResponse.json({ error: "找不到這則留言" }, { status: 404 });
+    }
+
     const { data: updated, error } = await supabase
       .from("comments")
       .update({ body: newMessage, edited_at: editedAt })
@@ -45,6 +58,19 @@ export async function POST(req: Request) {
     if (error) throw new Error(error.message);
     if (!updated) {
       return NextResponse.json({ error: "找不到這則留言" }, { status: 404 });
+    }
+
+    if (before.body !== newMessage) {
+      const editedBy = await resolveSupabaseUserId(role.email);
+      const { error: historyError } = await supabase.from("comment_edit_history").insert({
+        comment_id: commentId,
+        previous_body: before.body,
+        edited_by: editedBy,
+        edited_at: editedAt,
+      });
+      // The edit itself already succeeded; losing the audit row shouldn't
+      // fail the request, but it shouldn't pass silently either.
+      if (historyError) console.error("comment_edit_history insert failed", historyError.message);
     }
 
     return NextResponse.json({ ok: true, comment: updated });

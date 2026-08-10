@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "./supabaseClient";
 import { daysSince } from "./cases";
 
@@ -91,7 +92,7 @@ interface CommentDbRow {
   edited_at: string | null;
 }
 
-export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
+async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
   const supabase = getSupabaseClient();
   const CASE_COLUMNS =
     "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, related_ticket_url, note_label, note_url, status, priority, issue_tag, update_date";
@@ -209,3 +210,9 @@ export async function fetchSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[
     };
   });
 }
+
+// Each board loads a few thousand cases with their comments; without this
+// every navigation pays for it again.
+export const fetchSupabaseCases = unstable_cache(loadSupabaseCases, ["supabase-cases"], {
+  revalidate: 30,
+});

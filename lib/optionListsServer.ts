@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "./supabaseClient";
 import { emptyOptionLists, isListKey, LIST_KEYS, type ListKey, type OptionLists } from "./optionLists";
 
@@ -31,7 +32,7 @@ function emptyUsage(): OptionUsage {
   return Object.fromEntries(LIST_KEYS.map((k) => [k, {} as Record<string, number>])) as OptionUsage;
 }
 
-export async function fetchOptionUsage(): Promise<OptionUsage> {
+async function loadOptionUsage(): Promise<OptionUsage> {
   const supabase = getSupabaseClient();
   const COLUMNS = "board, dept, status, issue_tag, ho_type, ho_class, priority";
 
@@ -87,17 +88,17 @@ export async function fetchOptionUsage(): Promise<OptionUsage> {
 
 // Which lists are shared across both boards, straight from dropdown_lists
 // rather than hardcoded in the UI.
-export async function fetchGlobalListKeys(): Promise<Set<string>> {
+async function loadGlobalListKeys(): Promise<string[]> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("dropdown_lists")
     .select("key, is_global")
     .returns<{ key: string; is_global: boolean }[]>();
   if (error) throw new Error(error.message);
-  return new Set((data ?? []).filter((r) => r.is_global).map((r) => r.key));
+  return (data ?? []).filter((r) => r.is_global).map((r) => r.key);
 }
 
-export async function fetchOptionLists(): Promise<OptionLists> {
+async function loadOptionLists(): Promise<OptionLists> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("dropdown_options")
@@ -118,3 +119,15 @@ export async function fetchOptionLists(): Promise<OptionLists> {
   }
   return lists;
 }
+
+// Same shape as the case reads: the pages using these are per-user, the
+// data isn't. 選項管理 writes revalidate the tag so edits show up at once.
+export const fetchOptionLists = unstable_cache(loadOptionLists, ["option-lists"], {
+  revalidate: 60,
+});
+export const fetchGlobalListKeys = unstable_cache(loadGlobalListKeys, ["option-list-keys"], {
+  revalidate: 60,
+});
+export const fetchOptionUsage = unstable_cache(loadOptionUsage, ["option-usage"], {
+  revalidate: 60,
+});
