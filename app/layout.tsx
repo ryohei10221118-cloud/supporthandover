@@ -31,16 +31,16 @@ const THEME_INIT_SCRIPT = `(function () {
       mode = "dark";
     }
     var accents = {
-      red: { light: "#dc2626", dark: "#f87171" },
-      orange: { light: "#ea580c", dark: "#fb923c" },
-      yellow: { light: "#ca8a04", dark: "#facc15" },
-      green: { light: "#16a34a", dark: "#4ade80" },
-      teal: { light: "#0d9488", dark: "#2dd4bf" },
-      cyan: { light: "#0891b2", dark: "#22d3ee" },
-      blue: { light: "#2563eb", dark: "#5b8def" },
-      indigo: { light: "#4f46e5", dark: "#818cf8" },
-      purple: { light: "#9333ea", dark: "#c084fc" },
-      pink: { light: "#db2777", dark: "#f472b6" }
+      red: { light: "#b64c4c", dark: "#d69393" },
+      orange: { light: "#af6b47", dark: "#c8976f" },
+      yellow: { light: "#92763c", dark: "#bda852" },
+      green: { light: "#368352", dark: "#64c487" },
+      teal: { light: "#2f726c", dark: "#48b9ab" },
+      cyan: { light: "#367584", dark: "#52afbe" },
+      blue: { light: "#5675ba", dark: "#7c98ce" },
+      indigo: { light: "#6e69c2", dark: "#9fa4da" },
+      purple: { light: "#915fbe", dark: "#c0a4dc" },
+      pink: { light: "#b64c7b", dark: "#d591b5" }
     };
     var accent = accents[accentKey] || accents.blue;
     var accentHex = accent[mode];

@@ -123,11 +123,11 @@ async function loadOptionLists(): Promise<OptionLists> {
 // Same shape as the case reads: the pages using these are per-user, the
 // data isn't. 選項管理 writes revalidate the tag so edits show up at once.
 export const fetchOptionLists = unstable_cache(loadOptionLists, ["option-lists"], {
-  revalidate: 60,
+  revalidate: 300,
 });
 export const fetchGlobalListKeys = unstable_cache(loadGlobalListKeys, ["option-list-keys"], {
-  revalidate: 60,
+  revalidate: 300,
 });
 export const fetchOptionUsage = unstable_cache(loadOptionUsage, ["option-usage"], {
-  revalidate: 60,
+  revalidate: 300,
 });

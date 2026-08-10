@@ -11,19 +11,22 @@ export interface AccentFamily {
   dark: string;
 }
 
-// "blue" matches this app's original --accent value exactly for both modes,
-// so it stays the default until someone explicitly picks another.
+// Muted rather than vivid: hue and lightness are matched to the original
+// set with saturation capped (42% light / 45% dark), so the picker keeps the
+// same ten recognisable colours without any of them shouting on a screen
+// someone stares at all day. The login page imports this same list.
+// "blue" stays the default.
 export const ACCENT_FAMILIES: AccentFamily[] = [
-  { key: "red", light: "#dc2626", dark: "#f87171" },
-  { key: "orange", light: "#ea580c", dark: "#fb923c" },
-  { key: "yellow", light: "#ca8a04", dark: "#facc15" },
-  { key: "green", light: "#16a34a", dark: "#4ade80" },
-  { key: "teal", light: "#0d9488", dark: "#2dd4bf" },
-  { key: "cyan", light: "#0891b2", dark: "#22d3ee" },
-  { key: "blue", light: "#2563eb", dark: "#5b8def" },
-  { key: "indigo", light: "#4f46e5", dark: "#818cf8" },
-  { key: "purple", light: "#9333ea", dark: "#c084fc" },
-  { key: "pink", light: "#db2777", dark: "#f472b6" },
+  { key: "red", light: "#b64c4c", dark: "#d69393" },
+  { key: "orange", light: "#af6b47", dark: "#c8976f" },
+  { key: "yellow", light: "#92763c", dark: "#bda852" },
+  { key: "green", light: "#368352", dark: "#64c487" },
+  { key: "teal", light: "#2f726c", dark: "#48b9ab" },
+  { key: "cyan", light: "#367584", dark: "#52afbe" },
+  { key: "blue", light: "#5675ba", dark: "#7c98ce" },
+  { key: "indigo", light: "#6e69c2", dark: "#9fa4da" },
+  { key: "purple", light: "#915fbe", dark: "#c0a4dc" },
+  { key: "pink", light: "#b64c7b", dark: "#d591b5" },
 ];
 
 export const DEFAULT_ACCENT_KEY = "blue";

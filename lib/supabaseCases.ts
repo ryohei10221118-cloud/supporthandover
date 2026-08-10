@@ -142,6 +142,29 @@ interface CommentHistoryDbRow {
   edited_at: string;
 }
 
+/**
+ * Reads a small table in full, paging past PostgREST's 1000-row cap. Only for
+ * the audit/attachment tables — `cases` and `comments` are far too big to
+ * pull whole and are filtered server-side instead.
+ */
+async function readAll<T>(table: string, columns: string, orderBy: string): Promise<T[]> {
+  const supabase = getSupabaseClient();
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .order(orderBy, { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+      .returns<T[]>();
+    if (error) throw new Error(`Supabase 讀取 ${table} 失敗: ${error.message}`);
+    const page = data ?? [];
+    out.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return out;
+}
+
 async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
   const supabase = getSupabaseClient();
   const CASE_COLUMNS =
@@ -206,61 +229,30 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
   }
 
   // Screenshots, and the "先前內容" audit trail behind the （已編輯）markers.
-  // These tables only gain rows when someone actually edits something, so
-  // they stay far smaller than cases/comments; they're read the same chunked
-  // way for the same reason.
-  const commentIds = commentRows.map((c) => c.id);
-  const commentIdChunks: string[][] = [];
-  for (let i = 0; i < commentIds.length; i += CHUNK) commentIdChunks.push(commentIds.slice(i, i + CHUNK));
+  // Unlike comments these tables only gain a row when someone edits or
+  // uploads something, so they stay small — small enough that reading each
+  // one whole and matching in memory costs a couple of queries instead of
+  // one per 300-id chunk (which was ~18 round trips on the HO board).
+  const caseIdSet = new Set(caseIds);
+  const commentIdSet = new Set(commentRows.map((c) => c.id));
 
-  const [attachmentPages, fieldHistoryPages, commentHistoryPages] = await Promise.all([
-    Promise.all(
-      chunks.map((chunk) =>
-        supabase
-          .from("attachments")
-          .select("id, case_id, comment_id, file_name, storage_path, external_url")
-          .in("case_id", chunk)
-          .order("uploaded_at", { ascending: true })
-          .returns<AttachmentDbRow[]>()
-      )
+  const [attachmentRows, fieldHistoryRows, commentHistoryRows] = await Promise.all([
+    readAll<AttachmentDbRow>(
+      "attachments",
+      "id, case_id, comment_id, file_name, storage_path, external_url",
+      "uploaded_at"
     ),
-    Promise.all(
-      chunks.map((chunk) =>
-        supabase
-          .from("field_edit_history")
-          .select("case_id, field_name, previous_value, edited_by, edited_at")
-          .in("case_id", chunk)
-          .order("edited_at", { ascending: true })
-          .returns<FieldHistoryDbRow[]>()
-      )
+    readAll<FieldHistoryDbRow>(
+      "field_edit_history",
+      "case_id, field_name, previous_value, edited_by, edited_at",
+      "edited_at"
     ),
-    Promise.all(
-      commentIdChunks.map((chunk) =>
-        supabase
-          .from("comment_edit_history")
-          .select("comment_id, previous_body, edited_by, edited_at")
-          .in("comment_id", chunk)
-          .order("edited_at", { ascending: true })
-          .returns<CommentHistoryDbRow[]>()
-      )
+    readAll<CommentHistoryDbRow>(
+      "comment_edit_history",
+      "comment_id, previous_body, edited_by, edited_at",
+      "edited_at"
     ),
   ]);
-
-  const attachmentRows: AttachmentDbRow[] = [];
-  for (const { data, error } of attachmentPages) {
-    if (error) throw new Error(`Supabase 讀取 attachments 失敗: ${error.message}`);
-    attachmentRows.push(...(data ?? []));
-  }
-  const fieldHistoryRows: FieldHistoryDbRow[] = [];
-  for (const { data, error } of fieldHistoryPages) {
-    if (error) throw new Error(`Supabase 讀取 field_edit_history 失敗: ${error.message}`);
-    fieldHistoryRows.push(...(data ?? []));
-  }
-  const commentHistoryRows: CommentHistoryDbRow[] = [];
-  for (const { data, error } of commentHistoryPages) {
-    if (error) throw new Error(`Supabase 讀取 comment_edit_history 失敗: ${error.message}`);
-    commentHistoryRows.push(...(data ?? []));
-  }
 
   // Comment authors and editors are the same kind of thing — one lookup.
   const userIds = Array.from(
@@ -289,6 +281,8 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
   const attachmentsByCase = new Map<string, SupaAttachment[]>();
   const attachmentsByComment = new Map<string, SupaAttachment[]>();
   for (const a of attachmentRows) {
+    // The read isn't scoped to this board, so drop the other board's rows.
+    if (a.comment_id ? !commentIdSet.has(a.comment_id) : !(a.case_id && caseIdSet.has(a.case_id))) continue;
     const url = attachmentUrl(a);
     if (!url) continue;
     const item: SupaAttachment = { id: a.id, commentId: a.comment_id, fileName: a.file_name, url };
@@ -305,6 +299,7 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
 
   const fieldEditsByCase = new Map<string, SupaEdit[]>();
   for (const h of fieldHistoryRows) {
+    if (!caseIdSet.has(h.case_id)) continue;
     const list = fieldEditsByCase.get(h.case_id) ?? [];
     list.push({
       field: h.field_name,
@@ -317,6 +312,7 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
 
   const editsByComment = new Map<string, SupaEdit[]>();
   for (const h of commentHistoryRows) {
+    if (!commentIdSet.has(h.comment_id)) continue;
     const list = editsByComment.get(h.comment_id) ?? [];
     list.push({
       field: "comment",
@@ -379,5 +375,5 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
 // Each board loads a few thousand cases with their comments; without this
 // every navigation pays for it again.
 export const fetchSupabaseCases = unstable_cache(loadSupabaseCases, ["supabase-cases"], {
-  revalidate: 30,
+  revalidate: 300,
 });

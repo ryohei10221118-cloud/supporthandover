@@ -4,7 +4,7 @@
   --border: #e2e5ea;
   --text: #1a1d23;
   --text-muted: #6b7280;
-  --accent: #2563eb;
+  --accent: #5675ba;
   --overdue: #dc2626;
   --overdue-bg: #fef2f2;
   --sidebar: #211417;
@@ -21,7 +21,7 @@
     --border: #2c303a;
     --text: #e8eaed;
     --text-muted: #9aa0a8;
-    --accent: #5b8def;
+    --accent: #7c98ce;
     --overdue: #f87171;
     --overdue-bg: #3a1d1d;
     --sidebar: #0f0b0c;
@@ -2702,8 +2702,8 @@ tbody tr:nth-child(even) {
 }
 
 .role-badge.editor {
-  background: color-mix(in srgb, #2563eb 14%, transparent);
-  color: #2563eb;
+  background: color-mix(in srgb, #5675ba 14%, transparent);
+  color: #5675ba;
 }
 
 .role-badge.admin {

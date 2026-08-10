@@ -84,7 +84,7 @@ export default function OptionListsPanel({
   const [lists, setLists] = useState(initialLists);
   const [activeKey, setActiveKey] = useState<ListKey>("t1ho-dept");
   const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState("#2563eb");
+  const [newColor, setNewColor] = useState("#5675ba");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [lang, setLang] = useState<Lang>("zh");

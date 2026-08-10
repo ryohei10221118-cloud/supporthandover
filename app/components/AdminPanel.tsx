@@ -227,7 +227,7 @@ export default function AdminPanel({
 
   // --- 自訂角色 ---
   const [newRoleName, setNewRoleName] = useState("");
-  const [newRoleColor, setNewRoleColor] = useState("#2563eb");
+  const [newRoleColor, setNewRoleColor] = useState("#5675ba");
 
   async function addRole() {
     const name = newRoleName.trim();

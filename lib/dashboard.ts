@@ -77,5 +77,5 @@ async function loadDashboardCases(): Promise<DashboardCase[]> {
 // The dashboard page is per-user (it checks permissions), but the numbers
 // it charts are the same for everyone — so cache the query, not the page.
 export const fetchDashboardCases = unstable_cache(loadDashboardCases, ["dashboard-cases"], {
-  revalidate: 30,
+  revalidate: 300,
 });
