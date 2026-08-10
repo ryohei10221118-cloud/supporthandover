@@ -194,21 +194,69 @@ async function readAll<T>(table: string, columns: string, orderBy: string): Prom
   return readAllFiltered<T>(table, columns, orderBy);
 }
 
+/**
+ * Phase timings for one board load, printed as a single line to the server
+ * log. This is the only way to tell a slow query apart from a slow render
+ * once it's deployed — without it, "the page takes 5 seconds" is guesswork.
+ */
+function makeTimer(label: string) {
+  const start = Date.now();
+  let last = start;
+  const phases: string[] = [];
+  return {
+    mark(name: string) {
+      const now = Date.now();
+      phases.push(`${name}=${now - last}ms`);
+      last = now;
+    },
+    done(extra: Record<string, string | number> = {}) {
+      const tail = Object.entries(extra).map(([k, v]) => `${k}=${v}`);
+      console.log(`[timing] ${label} total=${Date.now() - start}ms ${[...phases, ...tail].join(" ")}`);
+    },
+  };
+}
+
 async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<BoardData> {
   const supabase = getSupabaseClient();
+  const timer = makeTimer(`board:${board}:${scope}`);
   const CASE_COLUMNS =
     "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, related_ticket_url, note_label, note_url, status, priority, issue_tag, update_date";
 
   // An index of the whole board first: three small columns, enough to know
   // the real total and to decide which rows are worth loading in full.
-  const index = await readAllFiltered<{ id: string; status: string; create_date: string }>(
-    "cases",
-    "id, status, create_date",
-    "seq",
-    (q) => q.eq("board", board).eq("archived", false)
-  );
-  const totalCount = index.length;
+  // Counted first so the pages can be fetched at once — walking them one at a
+  // time was three sequential round trips on a board this size — and ordered
+  // by the primary key, which needs no sort.
+  const { count, error: countError } = await supabase
+    .from("cases")
+    .select("id", { count: "exact", head: true })
+    .eq("board", board)
+    .eq("archived", false);
+  if (countError) throw new Error(`Supabase 讀取 cases 失敗: ${countError.message}`);
+
+  const totalCount = count ?? 0;
   if (totalCount === 0) return { cases: [], totalCount: 0, scope, cutoff: null };
+
+  const indexStarts: number[] = [];
+  for (let from = 0; from < totalCount; from += PAGE_SIZE) indexStarts.push(from);
+  const indexPages = await Promise.all(
+    indexStarts.map((from) =>
+      supabase
+        .from("cases")
+        .select("id, status, create_date")
+        .eq("board", board)
+        .eq("archived", false)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1)
+        .returns<{ id: string; status: string; create_date: string }[]>()
+    )
+  );
+  const index: { id: string; status: string; create_date: string }[] = [];
+  for (const { data, error } of indexPages) {
+    if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
+    index.push(...(data ?? []));
+  }
+  timer.mark("index");
 
   // The default view is "what someone picking up a handover needs": the last
   // month, plus every case still open no matter how old. Dropping old cases
@@ -240,7 +288,11 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
     caseRows.push(...(data ?? []));
   }
   caseRows.sort((a, b) => a.seq.localeCompare(b.seq));
-  if (caseRows.length === 0) return { cases: [], totalCount, scope, cutoff };
+  timer.mark("cases");
+  if (caseRows.length === 0) {
+    timer.done({ loaded: 0, total: totalCount });
+    return { cases: [], totalCount, scope, cutoff };
+  }
 
   const caseIds = caseRows.map((r) => r.id);
   // in() has a practical URL-length ceiling — chunk to stay well under it.
@@ -276,6 +328,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
   // Oldest first, so building each case's thread in array order needs no
   // further sorting downstream.
   commentRows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  timer.mark("comments");
 
   // Screenshots, and the "先前內容" audit trail behind the （已編輯）markers.
   // Unlike comments these tables only gain a row when someone edits or
@@ -420,6 +473,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
     };
   });
 
+  timer.done({ loaded: cases.length, total: totalCount, comments: commentRows.length });
   return { cases, totalCount, scope, cutoff };
 }
 

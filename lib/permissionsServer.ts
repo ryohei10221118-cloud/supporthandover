@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
 import { getSupabaseClient } from "./supabaseClient";
 import { displayNameFromEmail, readSessionToken, SESSION_COOKIE } from "./auth";
@@ -28,7 +29,7 @@ const BUILT_IN_ROLES: RoleRow[] = [
   { roleKey: "viewer", label: "Viewer", isSystem: true, sortOrder: 3 },
 ];
 
-export async function fetchRoles(): Promise<RoleRow[]> {
+async function loadRoles(): Promise<RoleRow[]> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("custom_roles")
@@ -45,6 +46,13 @@ export async function fetchRoles(): Promise<RoleRow[]> {
   }));
   return [...BUILT_IN_ROLES, ...custom];
 }
+
+// The role list and each role's permission set are the same for everybody and
+// change only when an admin edits them, but they were being read fresh on
+// every page load — two round trips before any of the page's own data.
+// Cached briefly; which role a given person has is still read live, so
+// promoting someone still takes effect on their next page load.
+export const fetchRoles = unstable_cache(loadRoles, ["roles"], { revalidate: 60 });
 
 export interface AdminUserRow {
   id: string;
@@ -70,7 +78,7 @@ export async function fetchUsers(): Promise<AdminUserRow[]> {
   }));
 }
 
-export async function fetchPermissionsFor(roleKey: string): Promise<Permissions> {
+async function loadPermissionsFor(roleKey: string): Promise<Permissions> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("role_permissions")
@@ -85,6 +93,12 @@ export async function fetchPermissionsFor(roleKey: string): Promise<Permissions>
   }
   return perms;
 }
+
+// See fetchRoles: cached per role key, so a matrix edit takes up to a minute
+// to reach everyone, while a role change for a person is immediate.
+export const fetchPermissionsFor = unstable_cache(loadPermissionsFor, ["role-permissions"], {
+  revalidate: 60,
+});
 
 export async function fetchAllRolePermissions(): Promise<Record<string, Permissions>> {
   const supabase = getSupabaseClient();
