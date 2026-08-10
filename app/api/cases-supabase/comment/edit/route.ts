@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
+import { CASES_TAG } from "@/lib/cacheTags";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -73,6 +75,7 @@ export async function POST(req: Request) {
       if (historyError) console.error("comment_edit_history insert failed", historyError.message);
     }
 
+    revalidateTag(CASES_TAG, "max");
     return NextResponse.json({ ok: true, comment: updated });
   } catch (err) {
     return NextResponse.json(

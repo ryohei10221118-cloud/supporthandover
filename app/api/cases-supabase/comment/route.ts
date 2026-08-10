@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
+import { CASES_TAG } from "@/lib/cacheTags";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -57,6 +59,7 @@ export async function POST(req: Request) {
       .single<{ id: string; body: string; created_at: string }>();
     if (insertError || !inserted) throw new Error(insertError?.message ?? "insert failed");
 
+    revalidateTag(CASES_TAG, "max");
     return NextResponse.json({
       ok: true,
       comment: {

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
+import { CASES_TAG } from "@/lib/cacheTags";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -110,6 +112,9 @@ export async function POST(req: Request) {
       if (historyError) console.error("field_edit_history insert failed", historyError.message);
     }
 
+    // The editor's own screen is already right — this is so everyone else
+    // sees the change on their next load instead of up to five minutes later.
+    revalidateTag(CASES_TAG, "max");
     return NextResponse.json({ ok: true, case: updated });
   } catch (err) {
     return NextResponse.json(

@@ -144,6 +144,19 @@ function toDateOrNull(raw: string): string | null {
   return parsed.toISOString().slice(0, 10);
 }
 
+/**
+ * When a migrated reply is dated. The sheet only records a day, so this is
+ * the day at 00:00 UTC — which is 08:00 the same morning in UTC+8, the zone
+ * the board displays in, so the date never lands on the wrong day.
+ *
+ * Stamping these with the import time instead would bunch every migrated
+ * reply into one second and drag each case's update date to today, which is
+ * the opposite of what the column is for.
+ */
+function sheetTimestamp(date: string): string {
+  return `${date}T00:00:00Z`;
+}
+
 async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
   const source = sheetSourceFor(board);
   if (!source) {
@@ -334,27 +347,29 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
 
   const seen = new Set<string>();
   const toInsert: MappedRow[] = [];
-  const replies: { seq: string; body: string }[] = [];
-  const statusUpdates: { id: string; from: string; to: string; date: string }[] = [];
+  const replies: { seq: string; body: string; at: string }[] = [];
+  const statusUpdates: { id: string; from: string; to: string; date: string; at: string }[] = [];
 
   for (const row of rows) {
     if (!row.seq || seen.has(row.seq)) continue;
     seen.add(row.seq);
+    const rowDate = toDateOrNull(row.updateDate) ?? toDateOrNull(row.createDate) ?? today;
     const match = existingBefore.bySeq.get(row.seq);
     if (!match) {
       toInsert.push(row);
-      if (row.reply) replies.push({ seq: row.seq, body: row.reply });
+      if (row.reply) replies.push({ seq: row.seq, body: row.reply, at: sheetTimestamp(rowDate) });
       continue;
     }
     if (row.reply && !(existingBefore.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
-      replies.push({ seq: row.seq, body: row.reply });
+      replies.push({ seq: row.seq, body: row.reply, at: sheetTimestamp(rowDate) });
     }
     if (options.syncStatus && statusDiffers(row.status, match.status)) {
       statusUpdates.push({
         id: match.id,
         from: match.status ?? "",
         to: row.status.trim(),
-        date: toDateOrNull(row.updateDate) ?? toDateOrNull(row.createDate) ?? today,
+        date: rowDate,
+        at: sheetTimestamp(rowDate),
       });
     }
   }
@@ -390,9 +405,9 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   const commentRows = replies
     .map((r) => {
       const target = bySeq.get(r.seq);
-      return target ? { case_id: target.id, author_id: authorId, body: r.body } : null;
+      return target ? { case_id: target.id, author_id: authorId, body: r.body, created_at: r.at } : null;
     })
-    .filter((r): r is { case_id: string; author_id: string; body: string } => r !== null);
+    .filter((r): r is { case_id: string; author_id: string; body: string; created_at: string } => r !== null);
 
   let commentsInserted = 0;
   for (let i = 0; i < commentRows.length; i += 200) {
@@ -416,7 +431,7 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
  * into field_edit_history, and the row's update date moves to the sheet's.
  */
 async function applyStatusUpdates(
-  updates: { id: string; from: string; to: string; date: string }[],
+  updates: { id: string; from: string; to: string; date: string; at: string }[],
   editorId: string
 ): Promise<number> {
   if (updates.length === 0) return 0;
@@ -430,7 +445,9 @@ async function applyStatusUpdates(
     field_name: "status",
     previous_value: u.from,
     edited_by: editorId,
-    edited_at: new Date().toISOString(),
+    // Dated from the sheet, like the comments — the change happened when the
+    // sheet says it did, not when somebody got round to running the import.
+    edited_at: u.at,
   }));
   for (let i = 0; i < historyRows.length; i += 200) {
     const { error } = await supabase.from("field_edit_history").insert(historyRows.slice(i, i + 200));
