@@ -13,14 +13,14 @@ import Topbar from "../components/Topbar";
 export const dynamic = "force-dynamic";
 
 export default async function HoPage() {
-  let initialCases: Awaited<ReturnType<typeof fetchSupabaseCases>> = [];
+  let board: Awaited<ReturnType<typeof fetchSupabaseCases>> = { cases: [], totalCount: 0, scope: "recent", cutoff: null };
   let optionLists = emptyOptionLists();
   let error: string | null = null;
 
   const session = await getClientSession();
 
   try {
-    [initialCases, optionLists] = await Promise.all([fetchSupabaseCases("ho"), fetchOptionLists()]);
+    [board, optionLists] = await Promise.all([fetchSupabaseCases("ho", "recent"), fetchOptionLists()]);
   } catch (err) {
     error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
   }
@@ -32,7 +32,7 @@ export default async function HoPage() {
         <div className="page">
           <SupaBoard
             board="ho"
-            initialCases={initialCases}
+            initialBoard={board}
             initialError={error}
             optionLists={optionLists}
             session={session}

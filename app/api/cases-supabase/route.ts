@@ -15,12 +15,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ cases: [], error: "board 參數必須是 t1ho 或 ho" }, { status: 400 });
   }
 
+  // "recent" is the default view (the last month plus everything still open);
+  // "all" is what the 載入全部 button asks for.
+  const scope = request.nextUrl.searchParams.get("scope") === "all" ? "all" : "recent";
+
   try {
-    const cases = await fetchSupabaseCases(board);
-    return NextResponse.json({ cases, error: null });
+    const data = await fetchSupabaseCases(board, scope);
+    return NextResponse.json({ ...data, error: null });
   } catch (err) {
     return NextResponse.json(
-      { cases: [], error: err instanceof Error ? err.message : "Unknown error fetching Supabase" },
+      {
+        cases: [],
+        totalCount: 0,
+        scope,
+        cutoff: null,
+        error: err instanceof Error ? err.message : "Unknown error fetching Supabase",
+      },
       { status: 500 }
     );
   }

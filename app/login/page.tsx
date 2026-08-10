@@ -260,8 +260,10 @@ function LoginForm() {
   return (
     <div className="login-page">
       <div className="login-top-controls">
+        {/* The label reads out the current language, matching the sidebar's
+            toggle — not the language a click would switch to. */}
         <button className="login-lang-toggle" type="button" onClick={toggleLang}>
-          {lang === "zh" ? "EN" : "中文"}
+          {lang === "zh" ? "中文" : "EN"}
         </button>
         <button
           className="login-theme-toggle"

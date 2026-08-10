@@ -27,6 +27,16 @@ export const ACCENT_FAMILIES: AccentFamily[] = [
   { key: "indigo", light: "#6e69c2", dark: "#9fa4da" },
   { key: "purple", light: "#915fbe", dark: "#c0a4dc" },
   { key: "pink", light: "#b64c7b", dark: "#d591b5" },
+
+  // Morandi tones: greyed-off, chalky colours (saturation ~20%) that read as
+  // neutral rather than as "a colour". Kept as a second row in the picker so
+  // the plain hues above stay easy to find.
+  { key: "clay", light: "#937162", dark: "#c1a69a" },
+  { key: "rose", light: "#936268", dark: "#c19a9f" },
+  { key: "sage", light: "#769362", dark: "#aac19a" },
+  { key: "mist", light: "#628393", dark: "#9ab4c1" },
+  { key: "mauve", light: "#836293", dark: "#b49ac1" },
+  { key: "stone", light: "#937a62", dark: "#c1ad9a" },
 ];
 
 export const DEFAULT_ACCENT_KEY = "blue";

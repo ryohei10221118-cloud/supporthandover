@@ -219,8 +219,10 @@ export default function Sidebar({
 
       <div className="sidebar-foot">
         <div className="toggle-row">
+          {/* Shows the language currently in use, not the one a click would
+              switch to — the label is a state readout, not a preview. */}
           <button className="mini-btn" type="button" onClick={toggleLang}>
-            {lang === "zh" ? "EN" : "中文"}
+            {lang === "zh" ? "中文" : "EN"}
           </button>
           <ThemePicker lang={lang} />
         </div>

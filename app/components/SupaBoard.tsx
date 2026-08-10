@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import type { SupaAttachment, SupaBoard, SupaCaseRow, SupaComment, SupaEdit } from "@/lib/supabaseCases";
+import type {
+  BoardData,
+  BoardScope,
+  SupaAttachment,
+  SupaBoard,
+  SupaCaseRow,
+  SupaComment,
+  SupaEdit,
+} from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
@@ -31,6 +39,13 @@ const STRINGS = {
   clearAllFilters: { zh: "清除篩選", en: "Clear filters" },
   searchPlaceholder: { zh: "搜尋序列 / OP / CS / 內容...", en: "Search seq / OP / CS / content..." },
   resultCount: { zh: (n: number) => `篩選出 ${n} 筆`, en: (n: number) => `${n} results` },
+  scopeRecent: {
+    zh: (n: number) => `目前顯示近一個月的案件與所有未結案案件，另有 ${n.toLocaleString()} 筆較舊的已結案案件未載入。`,
+    en: (n: number) =>
+      `Showing the last month plus every open case — ${n.toLocaleString()} older closed cases aren't loaded.`,
+  },
+  loadAll: { zh: (n: number) => `載入全部 ${n.toLocaleString()} 筆`, en: (n: number) => `Load all ${n.toLocaleString()}` },
+  loading: { zh: "載入中…", en: "Loading…" },
   newestFirst: { zh: "↓新到舊", en: "↓Newest" },
   oldestFirst: { zh: "↑舊到新", en: "↑Oldest" },
   addUpdate: { zh: "+ 更新", en: "+ Update" },
@@ -623,20 +638,25 @@ function MultiSelect({
 
 export default function SupaBoard({
   board,
-  initialCases,
+  initialBoard,
   initialError,
   optionLists,
   session,
 }: {
   board: SupaBoard;
-  initialCases: SupaCaseRow[];
+  initialBoard: BoardData;
   initialError: string | null;
   optionLists: OptionLists;
   session: ClientSession | null;
 }) {
-  const [cases, setCases] = useState(initialCases);
+  const [cases, setCases] = useState(initialBoard.cases);
   const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
+  // The board doesn't load every case up front — see lib/supabaseCases.ts.
+  // These track what's actually in hand so the UI can say so and offer the
+  // rest, rather than quietly showing a partial board as if it were whole.
+  const [totalCount, setTotalCount] = useState(initialBoard.totalCount);
+  const [scope, setScope] = useState<BoardScope>(initialBoard.scope);
 
   const [lang, setLang] = useState<Lang>("zh");
   useEffect(() => {
@@ -673,6 +693,21 @@ export default function SupaBoard({
     () => dateBoundsForPreset(datePreset, rangeStart, rangeEnd),
     [datePreset, rangeStart, rangeEnd]
   );
+
+  // Asking for dates older than what's loaded has to actually fetch them,
+  // otherwise the filter silently returns an empty range that looks like
+  // "there were no cases then".
+  const cutoff = initialBoard.cutoff;
+  const rangeStartISO = dateBounds ? dateBounds[0] : null;
+  useEffect(() => {
+    if (scope !== "recent" || loading || !cutoff) return;
+    // A preset with no bounds ("all") already shows everything loaded; only a
+    // range that starts before the window needs the rest fetched.
+    if (rangeStartISO !== null && rangeStartISO < cutoff) load("all");
+    // load/loading are read fresh on each run; re-running on filter change is
+    // the whole point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeStartISO, scope, cutoff]);
   const [dateSort, setDateSort] = useState<"none" | "desc" | "asc">("desc");
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
@@ -1367,17 +1402,24 @@ export default function SupaBoard({
     );
   }
 
-  async function refresh() {
+  async function load(nextScope: BoardScope) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/cases-supabase?board=${board}`, { cache: "no-store" });
+      const res = await fetch(`/api/cases-supabase?board=${board}&scope=${nextScope}`, { cache: "no-store" });
       const data = await res.json();
       setCases(data.cases);
       setError(data.error);
+      if (typeof data.totalCount === "number") setTotalCount(data.totalCount);
+      if (data.scope === "recent" || data.scope === "all") setScope(data.scope);
     } finally {
       setLoading(false);
     }
   }
+
+  // Refresh keeps whatever scope is already loaded, so hitting it after
+  // 載入全部 doesn't silently drop back to the recent window.
+  const refresh = () => load(scope);
+  const notLoaded = Math.max(totalCount - cases.length, 0);
 
   return (
     <div>
@@ -1479,6 +1521,17 @@ export default function SupaBoard({
             <span className="result-count">{t(lang, "resultCount", filtered.length)}</span>
           </div>
         </div>
+        {/* The board opens on the last month plus everything still open, so
+            say plainly what isn't loaded rather than letting a partial board
+            look complete. */}
+        {scope === "recent" && notLoaded > 0 && (
+          <div className="scope-note">
+            <span>{t(lang, "scopeRecent", notLoaded)}</span>
+            <button type="button" className="refresh-btn" disabled={loading} onClick={() => load("all")}>
+              {loading ? t(lang, "loading") : t(lang, "loadAll", totalCount)}
+            </button>
+          </div>
+        )}
         {perms["case.create"] && (
         <button type="button" className="primary" onClick={() => setNewCaseOpen(true)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">

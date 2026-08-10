@@ -142,18 +142,43 @@ interface CommentHistoryDbRow {
   edited_at: string;
 }
 
+/** How far back the default "recent" view reaches. */
+const RECENT_MONTHS = 1;
+
+export type BoardScope = "recent" | "all";
+
+export interface BoardData {
+  cases: SupaCaseRow[];
+  /** Every non-archived case on this board, including ones not loaded. */
+  totalCount: number;
+  scope: BoardScope;
+  /** The create_date the recent window starts at; null when scope is "all". */
+  cutoff: string | null;
+}
+
+export function recentCutoffDate(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - RECENT_MONTHS);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
- * Reads a small table in full, paging past PostgREST's 1000-row cap. Only for
- * the audit/attachment tables — `cases` and `comments` are far too big to
- * pull whole and are filtered server-side instead.
+ * Reads a table in full, paging past PostgREST's 1000-row cap. Used for the
+ * small audit/attachment tables, and for the lean case index.
  */
-async function readAll<T>(table: string, columns: string, orderBy: string): Promise<T[]> {
+async function readAllFiltered<T>(
+  table: string,
+  columns: string,
+  orderBy: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  narrow?: (q: any) => any
+): Promise<T[]> {
   const supabase = getSupabaseClient();
   const out: T[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(columns)
+    let query = supabase.from(table).select(columns);
+    if (narrow) query = narrow(query);
+    const { data, error } = await query
       .order(orderBy, { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
       .returns<T[]>();
@@ -165,35 +190,47 @@ async function readAll<T>(table: string, columns: string, orderBy: string): Prom
   return out;
 }
 
-async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
+async function readAll<T>(table: string, columns: string, orderBy: string): Promise<T[]> {
+  return readAllFiltered<T>(table, columns, orderBy);
+}
+
+async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<BoardData> {
   const supabase = getSupabaseClient();
   const CASE_COLUMNS =
     "id, board, seq, create_date, dept, ho_type, ho_class, op, cs, content, related_ticket_label, related_ticket_url, note_label, note_url, status, priority, issue_tag, update_date";
 
-  const { count, error: countError } = await supabase
-    .from("cases")
-    .select("id", { count: "exact", head: true })
-    .eq("board", board)
-    .eq("archived", false);
-  if (countError) throw new Error(`Supabase 讀取 cases 失敗: ${countError.message}`);
+  // An index of the whole board first: three small columns, enough to know
+  // the real total and to decide which rows are worth loading in full.
+  const index = await readAllFiltered<{ id: string; status: string; create_date: string }>(
+    "cases",
+    "id, status, create_date",
+    "seq",
+    (q) => q.eq("board", board).eq("archived", false)
+  );
+  const totalCount = index.length;
+  if (totalCount === 0) return { cases: [], totalCount: 0, scope, cutoff: null };
 
-  const total = count ?? 0;
-  if (total === 0) return [];
+  // The default view is "what someone picking up a handover needs": the last
+  // month, plus every case still open no matter how old. Dropping old cases
+  // purely by date would hide exactly the ones nobody has finished, which is
+  // the opposite of what a tracking board is for.
+  const cutoff = scope === "recent" ? recentCutoffDate() : null;
+  const wanted =
+    cutoff === null
+      ? index
+      : index.filter((r) => r.create_date >= cutoff || !isCompleted(board, r.status ?? ""));
 
-  const pageStarts: number[] = [];
-  for (let from = 0; from < total; from += PAGE_SIZE) pageStarts.push(from);
+  const wantedIds = wanted.map((r) => r.id);
+  const idChunks: string[][] = [];
+  for (let i = 0; i < wantedIds.length; i += 300) idChunks.push(wantedIds.slice(i, i + 300));
 
   const pages = await Promise.all(
-    pageStarts.map((from) =>
+    idChunks.map((chunk) =>
       supabase
         .from("cases")
         .select(CASE_COLUMNS)
-        .eq("board", board)
-        .eq("archived", false)
-        // .range() pagination needs a stable sort order, otherwise Postgres
-        // doesn't guarantee the same row lands on the same page twice.
+        .in("id", chunk)
         .order("seq", { ascending: true })
-        .range(from, from + PAGE_SIZE - 1)
         .returns<CaseDbRow[]>()
     )
   );
@@ -202,7 +239,8 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
     if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
     caseRows.push(...(data ?? []));
   }
-  if (caseRows.length === 0) return [];
+  caseRows.sort((a, b) => a.seq.localeCompare(b.seq));
+  if (caseRows.length === 0) return { cases: [], totalCount, scope, cutoff };
 
   const caseIds = caseRows.map((r) => r.id);
   // in() has a practical URL-length ceiling — chunk to stay well under it.
@@ -338,7 +376,7 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
     commentsByCase.set(c.case_id, list);
   }
 
-  return caseRows.map((r) => {
+  const cases = caseRows.map((r) => {
     const daysOpen = daysSince(r.create_date);
     const completed = isCompleted(board, r.status);
     const comments = commentsByCase.get(r.id) ?? [];
@@ -370,10 +408,13 @@ async function loadSupabaseCases(board: SupaBoard): Promise<SupaCaseRow[]> {
       daysOpen,
     };
   });
+
+  return { cases, totalCount, scope, cutoff };
 }
 
-// Each board loads a few thousand cases with their comments; without this
-// every navigation pays for it again.
+// Each board loads a lot of rows with their comments; without this every
+// navigation pays for it again. The scope argument is part of the cache key,
+// so "recent" and "all" are cached separately.
 export const fetchSupabaseCases = unstable_cache(loadSupabaseCases, ["supabase-cases"], {
   revalidate: 300,
 });

@@ -53,7 +53,11 @@ body {
   flex: 1;
   min-width: 0;
   position: relative;
-  overflow: hidden;
+  /* clip, not hidden: both trim the decorative dot-field that overhangs the
+     corner, but `hidden` also makes this a scroll container, which would
+     leave the sticky pagination bar sticking to a box that never scrolls
+     instead of to the viewport. */
+  overflow: clip;
 }
 
 .dotfield {
@@ -1257,13 +1261,21 @@ tbody tr:nth-child(even) {
   background: var(--bg);
 }
 
+/* Pinned to the bottom of the viewport so the page controls stay reachable
+   without scrolling to the end of a long board. */
 .pagination-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
+  padding: 10px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 
 .page-size-group {
@@ -2872,4 +2884,16 @@ button.primary.danger {
 
 .role-help-card li {
   margin-bottom: 4px;
+}
+
+/* Says what the board is currently holding when it isn't the whole table. */
+.scope-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
 }

@@ -12,14 +12,14 @@ export const dynamic = "force-dynamic";
 // reading T1 HO from Supabase instead of the Google Sheet. "/" has since been
 // swapped over, so this is now just a duplicate of it.
 export default async function T1hoTestPage() {
-  let initialCases: Awaited<ReturnType<typeof fetchSupabaseCases>> = [];
+  let board: Awaited<ReturnType<typeof fetchSupabaseCases>> = { cases: [], totalCount: 0, scope: "recent", cutoff: null };
   let optionLists = emptyOptionLists();
   let error: string | null = null;
 
   const session = await getClientSession();
 
   try {
-    [initialCases, optionLists] = await Promise.all([fetchSupabaseCases("t1ho"), fetchOptionLists()]);
+    [board, optionLists] = await Promise.all([fetchSupabaseCases("t1ho", "recent"), fetchOptionLists()]);
   } catch (err) {
     error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
   }
@@ -31,7 +31,7 @@ export default async function T1hoTestPage() {
         <div className="page">
           <SupaBoard
             board="t1ho"
-            initialCases={initialCases}
+            initialBoard={board}
             initialError={error}
             optionLists={optionLists}
             session={session}
