@@ -71,9 +71,10 @@ const STRINGS = {
   },
   matrixTitle: { zh: "角色 × 權限矩陣", en: "Role × permission matrix" },
   matrixHint: {
-    zh: "所有可授權的能力都在這一張表裡，之後新增權限只是矩陣多一列。",
-    en: "Every grantable capability lives in this one table — adding a permission later is just another row.",
+    zh: "所有可授權的能力都在這一張表裡。點分組標題（T1 HO／HO／共用）可以收合該組。",
+    en: "Every grantable capability lives in this one table. Click a group heading (T1 HO / HO / Shared) to fold it away.",
   },
+  groupCount: { zh: (n: number) => `${n} 項`, en: (n: number) => `${n} items` },
   matrixColCapability: { zh: "權限項目", en: "Capability" },
   lockedOnTitle: { zh: "固定開放，不可調整", en: "Always on, not adjustable" },
 
@@ -514,32 +515,41 @@ export default function AdminPanel({
                   {PERMISSION_GROUPS.map((group) => {
                     const groupKey = group.label.en;
                     const isCollapsed = collapsedGroups.has(groupKey);
-                    // Only a group long enough to be worth folding gets a toggle.
-                    const collapsible = group.keys.length >= 3;
+                    const toggle = () =>
+                      setCollapsedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(groupKey)) next.delete(groupKey);
+                        else next.add(groupKey);
+                        return next;
+                      });
                     return (
                       <Fragment key={groupKey}>
-                        <tr className={`group-row${isCollapsed ? " collapsed" : ""}`}>
+                        {/* Every group folds, including the short ones: a
+                            chevron on some headings and not others is the
+                            thing that makes it unclear which rows are a
+                            heading at all. The whole row is the target, not
+                            just the chevron. */}
+                        <tr
+                          className={`group-row${isCollapsed ? " collapsed" : ""}`}
+                          onClick={toggle}
+                        >
                           <td colSpan={roles.length + 1}>
-                            {collapsible && (
-                              <button
-                                type="button"
-                                className="group-toggle"
-                                aria-expanded={!isCollapsed}
-                                onClick={() =>
-                                  setCollapsedGroups((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(groupKey)) next.delete(groupKey);
-                                    else next.add(groupKey);
-                                    return next;
-                                  })
-                                }
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              className="group-toggle"
+                              aria-expanded={!isCollapsed}
+                              aria-label={group.label[lang]}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggle();
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </button>
                             <span className="group-label">{group.label[lang]}</span>
+                            <span className="group-count">{t(lang, "groupCount", group.keys.length)}</span>
                           </td>
                         </tr>
                         {!isCollapsed &&

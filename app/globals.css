@@ -2861,16 +2861,38 @@ select.threshold:focus {
   cursor: pointer;
 }
 
+/* Group headings have to read as headings, not as another permission row —
+   without that it isn't obvious which rows fold. Accent-tinted band, heavier
+   type in the full text colour, and a rule above to separate it from the
+   group before. */
+.perm-matrix-table .group-row {
+  cursor: pointer;
+}
+
 .perm-matrix-table .group-row td {
-  background: var(--bg);
-  font-weight: 650;
-  font-size: 0.76rem;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-muted);
-  padding-top: 8px;
-  padding-bottom: 8px;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  padding-top: 10px;
+  padding-bottom: 10px;
   text-align: left;
+}
+
+.perm-matrix-table .group-row:hover td {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+}
+
+.perm-matrix-table .group-row .group-count {
+  margin-left: 8px;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
 }
 
 .perm-matrix-table .group-row .group-toggle {
