@@ -26,8 +26,8 @@ const STRINGS = {
 
   importTitle: { zh: "從 Google Sheet 補進新案件", en: "Bring in new cases from the Google Sheet" },
   importHint: {
-    zh: "交接期間如果還有人在舊 Sheet 上記錄，用這裡把 Sheet 上有、看板上還沒有的 T1 HO 案件與回覆補進來。先「試算」看清楚會新增什麼，再執行。",
-    en: "For the changeover, this pulls in T1 HO cases and replies that exist in the sheet but not on the board. Preview first, then run.",
+    zh: "交接期間如果還有人在舊 Sheet 上記錄，用這裡把 Sheet 上有、看板上還沒有的案件補進來。先「試算」看清楚會新增什麼，再執行。",
+    en: "For the changeover, this pulls in cases that exist in the sheet but not on the board. Preview first, then run.",
   },
   importSafety: {
     zh: "只會新增，不會修改或刪除任何東西：已存在的案件（同一個序列）完全不動，所以你在工具上改過的內容不會被 Sheet 蓋掉；回覆只有在該案件還沒有一模一樣的留言時才會新增。因此重複執行是安全的。",
