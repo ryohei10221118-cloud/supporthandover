@@ -47,13 +47,3 @@ export function buildColumnMap(header: string[]): ColumnMap {
 }
 
 // Converts a 0-based column index to its A1 letter(s): 0 -> "A", 26 -> "AA".
-export function columnIndexToLetter(index: number): string {
-  let n = index + 1;
-  let letter = "";
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    letter = String.fromCharCode(65 + rem) + letter;
-    n = Math.floor((n - 1) / 26);
-  }
-  return letter;
-}

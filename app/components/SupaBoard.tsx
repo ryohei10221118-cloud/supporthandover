@@ -24,7 +24,7 @@ import { FIELD_PERMISSION, noPermissions, type ClientSession, type Permissions }
 import { getRolePreviewPermissions } from "@/lib/rolePreview";
 import { systemDisplayName } from "@/lib/systemAccounts";
 
-// --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
+// --- UI language (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
 type Lang = "zh" | "en";
 
@@ -201,7 +201,7 @@ function latestUpdateAt(c: SupaCaseRow): string | null {
   return latest;
 }
 
-// --- Draggable/resizable columns (same behavior as CaseBoard.tsx's T1 HO
+// --- Draggable/resizable columns (the T1 HO
 // table, just with a column set that varies by board) ---
 type ColumnKey =
   | "seq"
@@ -293,10 +293,10 @@ function isColumnOrder(value: unknown, defaults: ColumnKey[]): value is ColumnKe
   );
 }
 
-// A plain character count under-clamps dense CJK text — see CaseBoard.tsx's
-// identical helper for the full rationale. Kept as a duplicate here rather
-// than a shared import since the two board components otherwise don't share
-// a module and this is the only piece worth lifting out on its own.
+// A plain character count under-clamps dense CJK text: a full-width glyph
+// occupies roughly two columns, so 120 Chinese characters fill about as much
+// of a cell as 240 Latin ones. Weighting them double is what makes "is this
+// long enough to need a 顯示更多 button" agree with what the eye sees.
 const FULLWIDTH_RE = /[　-鿿＀-￯]/;
 
 function isVisuallyLong(text: string): boolean {
@@ -781,7 +781,7 @@ export default function SupaBoard({
     } catch {
       // ignore
     }
-    // See CaseBoard.tsx's identical listener for why this is needed —
+    // Why this listener is needed —
     // localStorage's own "storage" event doesn't fire in the tab that made
     // the write, so without this the toggle only takes effect after
     // navigating to another page.
@@ -1301,7 +1301,7 @@ export default function SupaBoard({
     setDateSort((prev) => (prev === "none" ? "desc" : prev === "desc" ? "asc" : "none"));
   }
 
-  // --- Pagination (matches CaseBoard.tsx's T1 HO table) ---
+  // --- Pagination ---
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
   useEffect(() => {

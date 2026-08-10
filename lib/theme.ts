@@ -46,7 +46,7 @@ export const LANG_STORAGE_KEY = "t1ho_lang";
 // The native "storage" event only fires in OTHER tabs, never the tab that
 // made the write — so switching language in the sidebar doesn't reach an
 // already-mounted board page without this. Sidebar dispatches it right
-// after writing localStorage; CaseBoard/SupaBoard listen for it to update
+// after writing localStorage; SupaBoard listens for it to update
 // their own lang state immediately instead of only picking it up on next
 // mount (i.e. after navigating to another page).
 export const LANG_CHANGE_EVENT = "t1ho_lang_change";
