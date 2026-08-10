@@ -2,6 +2,7 @@ import { fetchSupabaseCases } from "@/lib/supabaseCases";
 import { emptyOptionLists } from "@/lib/optionLists";
 import { fetchOptionLists } from "@/lib/optionListsServer";
 import { getClientSession } from "@/lib/permissionsServer";
+import { timed } from "@/lib/timing";
 import SupaBoard from "./components/SupaBoard";
 import Topbar from "./components/Topbar";
 
@@ -17,13 +18,20 @@ export default async function Home() {
   let optionLists = emptyOptionLists();
   let error: string | null = null;
 
-  const session = await getClientSession();
-
-  try {
-    [board, optionLists] = await Promise.all([fetchSupabaseCases("t1ho", "recent"), fetchOptionLists()]);
-  } catch (err) {
+  // Started before the session is awaited, not after: the two have nothing to
+  // do with each other, and running them in series put a whole extra round
+  // trip in front of every page load. The rejection handler is attached here
+  // rather than via try/catch so the promise is never briefly unhandled.
+  const dataPromise = timed("page:t1ho:data", () =>
+    Promise.all([fetchSupabaseCases("t1ho", "recent"), fetchOptionLists()])
+  ).catch((err: unknown) => {
     error = err instanceof Error ? err.message : "Unknown error fetching Supabase";
-  }
+    return null;
+  });
+
+  const session = await timed("page:t1ho:session", getClientSession);
+  const data = await dataPromise;
+  if (data) [board, optionLists] = data;
 
   return (
     <>
