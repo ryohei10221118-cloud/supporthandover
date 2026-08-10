@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { CASES_TAG } from "@/lib/cacheTags";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 import { prettyDisplayName } from "@/lib/auth";
@@ -142,6 +144,10 @@ export async function POST(req: Request) {
       edited_at: new Date().toISOString(),
     });
     if (historyError) console.error("move-to-ho history insert failed", historyError.message);
+
+    // The HO board gained a case it didn't have; without this it wouldn't
+    // show up there for another five minutes.
+    revalidateTag(CASES_TAG, "max");
 
     return NextResponse.json({
       ok: true,

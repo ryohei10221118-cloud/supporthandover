@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "crypto";
+import { systemDisplayName } from "./systemAccounts";
 
 const CODE_TTL_SECONDS = 5 * 60;
 const CODE_RESEND_COOLDOWN_SECONDS = 30;
@@ -103,13 +104,16 @@ export function readSessionToken(token: string | undefined | null): Session | nu
 // The part of the verified email before "@" — used as the commenter's
 // display name (e.g. "chen.wei@company.com" -> "chen.wei").
 export function displayNameFromEmail(email: string): string {
-  return email.split("@")[0];
+  return systemDisplayName(email) ?? email.split("@")[0];
 }
 
 // "sunny.l@x.com" -> "Sunny". What gets stored in a case's CS column, so new
 // rows read the way the board displays them; older rows keep whatever they
 // have and are prettified at render time.
 export function prettyDisplayName(email: string): string {
+  // Taken whole: the shortening below would cut "Sheet 匯入" down to "Sheet".
+  const system = systemDisplayName(email);
+  if (system) return system;
   const first = displayNameFromEmail(email).trim().split(/[.\s_-]+/)[0] ?? "";
   if (!first) return displayNameFromEmail(email);
   return first.charAt(0).toUpperCase() + first.slice(1);

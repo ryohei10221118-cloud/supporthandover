@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { requireAdmin } from "@/lib/adminGuard";
 import { archiveCutoffDate, fetchArchiveStatus, THRESHOLD_CHOICES } from "@/lib/archive";
+import { CASES_TAG } from "@/lib/cacheTags";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,7 @@ export async function POST() {
       .upsert({ id: 1, threshold_months: status.thresholdMonths, last_run_at: runAt }, { onConflict: "id" });
     if (settingsError) throw new Error(settingsError.message);
 
+    revalidateTag(CASES_TAG, "max");
     return NextResponse.json({ ok: true, archived: status.eligibleCases, ...(await fetchArchiveStatus()) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "封存失敗" }, { status: 502 });

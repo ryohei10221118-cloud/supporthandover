@@ -4,6 +4,7 @@ import { fetchSheetValues, hasServiceAccountConfig } from "./sheetsApi";
 import { parseCaseRows } from "./cases";
 import { parseHoSheetRows } from "./hoSheetSchema";
 import { resolveSupabaseUserId } from "./supabaseUsers";
+import { SHEET_IMPORT_EMAIL } from "./systemAccounts";
 import type { SupaBoard } from "./supabaseCases";
 
 /**
@@ -322,14 +323,13 @@ function statusDiffers(sheetStatus: string, boardStatus: string): boolean {
  * Applies the plan. Inserts only — the one exception is the status of an
  * existing case, and only when the caller asks for it explicitly.
  */
-export async function applySheetImport(
-  board: SupaBoard,
-  importerEmail: string,
-  options: ImportOptions = {}
-): Promise<ImportResult> {
+export async function applySheetImport(board: SupaBoard, options: ImportOptions = {}): Promise<ImportResult> {
   const [rows, existingBefore] = await Promise.all([readSheet(board), loadExisting(board)]);
   const supabase = getSupabaseClient();
-  const authorId = await resolveSupabaseUserId(importerEmail);
+  // Attributed to the import, not to whoever ran it: a reply carried across
+  // from the sheet was written by someone else, and putting the operator's
+  // name on it reads as though they wrote it.
+  const authorId = await resolveSupabaseUserId(SHEET_IMPORT_EMAIL);
   const today = new Date().toISOString().slice(0, 10);
 
   const seen = new Set<string>();

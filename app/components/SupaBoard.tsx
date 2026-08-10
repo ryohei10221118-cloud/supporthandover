@@ -21,6 +21,7 @@ import OptionBadge, { type BadgeOption } from "./OptionBadge";
 import { FIELD_LIST_KEY, type OptionLists } from "@/lib/optionLists";
 import { FIELD_PERMISSION, noPermissions, type ClientSession, type Permissions } from "@/lib/permissions";
 import { getRolePreviewPermissions } from "@/lib/rolePreview";
+import { systemDisplayName } from "@/lib/systemAccounts";
 
 // --- UI language, mirroring CaseBoard.tsx's system (Sidebar's toggle writes
 // the same localStorage key; each board reads it once on mount) ---
@@ -109,7 +110,7 @@ function seqNumber(seq: string): number {
 // matching lib/auth.ts's displayNameFromEmail (that one's server-only, so
 // this is a small duplicate rather than a shared import).
 function displayNameFromEmail(email: string): string {
-  return email.split("@")[0];
+  return systemDisplayName(email) ?? email.split("@")[0];
 }
 
 // "sunny.l" -> "Sunny". Account names carry a surname initial and arrive
@@ -119,6 +120,12 @@ function prettyName(raw: string): string {
   const first = raw.trim().split(/[.\s_-]+/)[0] ?? "";
   if (!first) return raw.trim();
   return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+// Same as prettyName but from an email, and it leaves a system account's
+// label whole — prettyName would trim "Sheet 匯入" down to "Sheet".
+function prettyNameFromEmail(email: string): string {
+  return systemDisplayName(email) ?? prettyName(displayNameFromEmail(email));
 }
 
 function toHistoryEntry(e: SupaEdit): HistoryEntry {
@@ -527,7 +534,7 @@ function CommentThread({
             const isEditingThis = editingId === c.id;
             return (
               <div key={entryKey} className="comment">
-                <span className="who">{prettyName(displayNameFromEmail(c.authorEmail))}</span>{" "}
+                <span className="who">{prettyNameFromEmail(c.authorEmail)}</span>{" "}
                 <span className="meta">{formatTimestampUTC8(c.createdAt)}</span>
                 {/* Comments edited before the history table existed still get
                     the marker — there's just nothing to show on hover. */}

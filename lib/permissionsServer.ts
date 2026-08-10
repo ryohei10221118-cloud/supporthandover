@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
 import { getSupabaseClient } from "./supabaseClient";
 import { displayNameFromEmail, readSessionToken, SESSION_COOKIE } from "./auth";
+import { SHEET_IMPORT_EMAIL } from "./systemAccounts";
 import {
   fallbackRole,
   isPermissionKey,
@@ -61,12 +62,17 @@ export interface AdminUserRow {
   addedAt: string | null;
 }
 
-/** Everyone who has ever signed in, for the 角色管理 table. */
+/**
+ * Everyone who has ever signed in, for the 角色管理 table. System accounts
+ * are left out — they exist only to own rows no person wrote, so there's no
+ * role to give them and offering one would only be confusing.
+ */
 export async function fetchUsers(): Promise<AdminUserRow[]> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("users")
     .select("id, email, role_key, added_at")
+    .neq("email", SHEET_IMPORT_EMAIL)
     .order("added_at", { ascending: true })
     .returns<{ id: string; email: string; role_key: string; added_at: string | null }[]>();
   if (error) throw new Error(error.message);

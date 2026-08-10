@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "./supabaseClient";
 import { daysSince } from "./cases";
 import { fetchClosedStatuses } from "./statusRules";
+import { CASES_TAG } from "./cacheTags";
 
 // Supabase/PostgREST caps a single response at 1000 rows by default (the
 // project's db-max-rows setting) — anything past that is silently dropped,
@@ -524,4 +525,5 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
 // so "recent" and "all" are cached separately.
 export const fetchSupabaseCases = unstable_cache(loadSupabaseCases, ["supabase-cases"], {
   revalidate: 300,
+  tags: [CASES_TAG],
 });

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/adminGuard";
+import { CASES_TAG } from "@/lib/cacheTags";
 import { applySheetImport, planSheetImport } from "@/lib/sheetImport";
 import type { SupaBoard } from "@/lib/supabaseCases";
 
@@ -23,14 +25,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { role, deny } = await requireAdmin();
+  const { deny } = await requireAdmin();
   if (deny) return deny;
   const board = boardFrom(req);
   // Off unless asked for: overwriting a status is the only part of an import
   // that can lose work done in the app.
   const syncStatus = req.nextUrl.searchParams.get("syncStatus") === "1";
   try {
-    const result = await applySheetImport(board, role.email, { syncStatus });
+    const result = await applySheetImport(board, { syncStatus });
+    // Without this the board keeps serving its cached copy for up to five
+    // minutes and the cases you just imported simply aren't there.
+    revalidateTag(CASES_TAG, "max");
     return NextResponse.json({ ok: true, ...result, plan: await planSheetImport(board) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "匯入失敗" }, { status: 502 });

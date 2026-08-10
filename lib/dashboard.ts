@@ -1,6 +1,7 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { getSupabaseClient } from "./supabaseClient";
+import { CASES_TAG } from "./cacheTags";
 
 // Everything the dashboard charts from, pulled once: create date, board, and
 // the four categorical dimensions it breaks cases down by. Deliberately not
@@ -78,4 +79,5 @@ async function loadDashboardCases(): Promise<DashboardCase[]> {
 // it charts are the same for everyone — so cache the query, not the page.
 export const fetchDashboardCases = unstable_cache(loadDashboardCases, ["dashboard-cases"], {
   revalidate: 300,
+  tags: [CASES_TAG],
 });

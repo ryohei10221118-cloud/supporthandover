@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { prettyDisplayName } from "@/lib/auth";
+import { CASES_TAG } from "@/lib/cacheTags";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -150,6 +152,9 @@ export async function POST(req: Request) {
       saved.push({ name, url: pub.publicUrl });
     }
 
+    // The row was added to the table, not just changed — a stale cache would
+    // make it disappear again on the next navigation.
+    revalidateTag(CASES_TAG, "max");
     return NextResponse.json({ ok: true, case: { id: created.id, seq: created.seq }, attachments: saved });
   } catch (err) {
     return NextResponse.json(
