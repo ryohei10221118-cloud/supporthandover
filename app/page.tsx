@@ -36,7 +36,7 @@ export default async function Home() {
   return (
     <>
       <Topbar page="t1ho" />
-      <main className="content">
+      <main className="content content-fill">
         <div className="page page-fill">
           <SupaBoard
             board="t1ho"

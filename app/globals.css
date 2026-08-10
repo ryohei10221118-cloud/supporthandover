@@ -336,6 +336,12 @@ body {
   overflow-y: auto;
 }
 
+/* A board fills the viewport, so the trailing 60px would just park the
+   pagination bar above an empty strip. The bar brings its own padding. */
+.content-fill {
+  padding-bottom: 0;
+}
+
 button.primary {
   border: none;
   border-radius: 8px;
@@ -1316,6 +1322,15 @@ th.draggable-col:active {
 
 tbody tr:nth-child(even) {
   background: var(--bg);
+}
+
+/* Rows vary a lot in height — long content, comment threads, an expanded
+   cell — and a visible divider on every one turns that variance into what
+   reads as a broken grid. The dividers stay in place (so nothing shifts) but
+   go transparent; the zebra striping already separates the rows. Only the
+   header separator and the table's outer border remain visible. */
+tbody td {
+  border-bottom-color: transparent;
 }
 
 /* Pinned to the bottom of the viewport so the page controls stay reachable

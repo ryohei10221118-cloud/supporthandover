@@ -35,7 +35,7 @@ export default async function T1hoTestPage() {
   return (
     <>
       <Topbar page="t1hoTest" />
-      <main className="content">
+      <main className="content content-fill">
         <div className="page page-fill">
           <SupaBoard
             board="t1ho"
