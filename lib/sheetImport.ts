@@ -6,6 +6,18 @@ import { parseHoSheetRows } from "./hoSheetSchema";
 import { resolveSupabaseUserId } from "./supabaseUsers";
 import { SHEET_IMPORT_EMAIL } from "./systemAccounts";
 import type { SupaBoard } from "./supabaseCases";
+import { SYNC_FIELDS, SYNC_FIELD_KEYS, syncFieldsForBoard } from "./sheetImportShared";
+import type {
+  ImportOptions,
+  ImportPlan,
+  ImportPlanCase,
+  ImportResult,
+  SyncField,
+} from "./sheetImportShared";
+
+// The field list, the labels and the plan's shape live in a client-safe
+// module so the admin UI can import them; this file is server-only.
+export * from "./sheetImportShared";
 
 /**
  * Brings across cases and replies added to a Google Sheet after the original
@@ -63,61 +75,6 @@ interface MappedRow {
   /** Becomes a comment. The HO sheet keeps its updates inside the content
    *  cell rather than a column of its own, so only T1 HO produces one. */
   reply: string;
-}
-
-export interface ImportPlanCase {
-  seq: string;
-  date: string;
-  status: string;
-  content: string;
-  // Shown in the preview so a column that mapped to the wrong place — or to
-  // nothing — is visible before anything is written, not after.
-  who: string;
-  category: string;
-  priority: string;
-}
-
-export interface ImportPlanComment {
-  seq: string;
-  body: string;
-}
-
-/** A case that exists on both sides but whose status has diverged. */
-export interface ImportPlanStatusChange {
-  seq: string;
-  /** What the sheet says now. */
-  from: string;
-  /** What the board says now. */
-  to: string;
-}
-
-export interface ImportPlan {
-  board: SupaBoard;
-  sheetRows: number;
-  newCases: ImportPlanCase[];
-  newComments: ImportPlanComment[];
-  /**
-   * Existing cases where the sheet and the board disagree about the status.
-   * Listed, never applied on their own: syncing these is opt-in because the
-   * board's value may be the newer one — somebody may have closed the case
-   * here after the sheet was last touched.
-   */
-  statusChanges: ImportPlanStatusChange[];
-  /** Rows already fully represented — nothing to do. */
-  unchanged: number;
-  /** Rows with no id, or a repeat of one already seen. */
-  skipped: number;
-}
-
-export interface ImportResult {
-  casesInserted: number;
-  commentsInserted: number;
-  statusesUpdated: number;
-}
-
-export interface ImportOptions {
-  /** Take the sheet's status for cases that already exist. */
-  syncStatus?: boolean;
 }
 
 const LEGACY_PREFIX = /^\[搬遷自舊 Sheet\]\n?/;
@@ -212,11 +169,12 @@ async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
   }));
 }
 
-interface ExistingCase {
-  id: string;
-  seq: string;
-  status: string;
-}
+/** An existing row, carrying every column the sheet could disagree with. */
+type ExistingCase = { id: string; seq: string } & Record<string, string | null>;
+
+// The seq map keeps deleted cases too: their number is still taken, and
+// re-creating one the sheet still lists would undo the deletion silently.
+const EXISTING_COLUMNS = ["id", "seq", ...SYNC_FIELD_KEYS.map((k) => SYNC_FIELDS[k].column)].join(", ");
 
 async function loadExisting(board: SupaBoard): Promise<{
   bySeq: Map<string, ExistingCase>;
@@ -229,7 +187,7 @@ async function loadExisting(board: SupaBoard): Promise<{
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("cases")
-      .select("id, seq, status")
+      .select(EXISTING_COLUMNS)
       .eq("board", board)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1)
@@ -282,10 +240,11 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
     sheetRows: rows.length,
     newCases: [],
     newComments: [],
-    statusChanges: [],
+    fieldChanges: [],
     unchanged: 0,
     skipped: 0,
   };
+  const fields = syncFieldsForBoard(board);
   const seen = new Set<string>();
 
   for (const row of rows) {
@@ -317,8 +276,10 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
       touched = true;
     }
 
-    if (statusDiffers(row.status, match.status)) {
-      plan.statusChanges.push({ seq: row.seq, from: row.status.trim(), to: match.status.trim() });
+    for (const field of fields) {
+      const diff = fieldDiff(row, match, field);
+      if (!diff) continue;
+      plan.fieldChanges.push({ seq: row.seq, field, ...diff });
       touched = true;
     }
 
@@ -328,19 +289,36 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
   return plan;
 }
 
-/**
- * A blank cell in the sheet is missing information, not an instruction to
- * clear the status, so it never counts as a difference.
- */
-function statusDiffers(sheetStatus: string, boardStatus: string): boolean {
-  const sheet = sheetStatus.trim();
-  if (!sheet) return false;
-  return sheet.toLowerCase() !== (boardStatus ?? "").trim().toLowerCase();
+/** The sheet's value for a field, as a plain string. */
+function sheetValue(row: MappedRow, field: SyncField): string {
+  return (row[field] ?? "").toString();
 }
 
 /**
- * Applies the plan. Inserts only — the one exception is the status of an
- * existing case, and only when the caller asks for it explicitly.
+ * Whether the sheet and the board disagree on one field, and what each says.
+ *
+ * A blank cell in the sheet is missing information, not an instruction to
+ * clear the field, so it never counts as a difference — otherwise a mostly
+ * empty column would propose wiping the board clean. Comparison ignores case
+ * and surrounding whitespace: "Follow up" and "follow up " are the same
+ * answer typed by two different people, and offering that as a change to
+ * review is just noise.
+ */
+function fieldDiff(
+  row: MappedRow,
+  match: ExistingCase,
+  field: SyncField
+): { from: string; to: string } | null {
+  const from = normalise(sheetValue(row, field));
+  if (!from) return null;
+  const to = normalise((match[SYNC_FIELDS[field].column] ?? "").toString());
+  if (from.toLowerCase() === to.toLowerCase()) return null;
+  return { from, to };
+}
+
+/**
+ * Applies the plan. Inserts only, except for the fields the caller explicitly
+ * asked to sync on cases that already exist.
  */
 export async function applySheetImport(board: SupaBoard, options: ImportOptions = {}): Promise<ImportResult> {
   const [rows, existingBefore] = await Promise.all([readSheet(board), loadExisting(board)]);
@@ -351,10 +329,16 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   const authorId = await resolveSupabaseUserId(SHEET_IMPORT_EMAIL);
   const today = new Date().toISOString().slice(0, 10);
 
+  // Only the fields both asked for and available on this board — a caller
+  // passing HO's Type while importing T1 HO must not write a column that
+  // board doesn't use.
+  const available = new Set(syncFieldsForBoard(board));
+  const syncFields = (options.syncFields ?? []).filter((f) => available.has(f));
+
   const seen = new Set<string>();
   const toInsert: MappedRow[] = [];
   const replies: { seq: string; body: string; at: string }[] = [];
-  const statusUpdates: { id: string; from: string; to: string; date: string; at: string }[] = [];
+  const updates: FieldUpdate[] = [];
 
   for (const row of rows) {
     if (!row.seq || seen.has(row.seq)) continue;
@@ -369,11 +353,14 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
     if (row.reply && !(existingBefore.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
       replies.push({ seq: row.seq, body: row.reply, at: sheetTimestamp(rowDate) });
     }
-    if (options.syncStatus && statusDiffers(row.status, match.status)) {
-      statusUpdates.push({
+    for (const field of syncFields) {
+      const diff = fieldDiff(row, match, field);
+      if (!diff) continue;
+      updates.push({
         id: match.id,
-        from: match.status ?? "",
-        to: row.status.trim(),
+        field,
+        from: diff.to, // the value being replaced is the board's
+        to: diff.from,
         date: rowDate,
         at: sheetTimestamp(rowDate),
       });
@@ -426,20 +413,28 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
     commentsInserted += (data ?? []).length;
   }
 
-  const statusesUpdated = await applyStatusUpdates(statusUpdates, authorId);
+  const fieldsUpdated = await applyFieldUpdates(updates, authorId);
 
-  return { casesInserted, commentsInserted, statusesUpdated };
+  return { casesInserted, commentsInserted, fieldsUpdated };
+}
+
+interface FieldUpdate {
+  id: string;
+  field: SyncField;
+  /** The board's current value — the one about to be replaced. */
+  from: string;
+  /** The sheet's value, which is what gets written. */
+  to: string;
+  date: string;
+  at: string;
 }
 
 /**
- * Overwriting a status is the one destructive thing this import does, so it
- * leaves the same trail a person editing the field would: the old value goes
+ * Overwriting a field is the one destructive thing this import does, so it
+ * leaves the same trail a person editing the cell would: the old value goes
  * into field_edit_history, and the row's update date moves to the sheet's.
  */
-async function applyStatusUpdates(
-  updates: { id: string; from: string; to: string; date: string; at: string }[],
-  editorId: string
-): Promise<number> {
+async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Promise<number> {
   if (updates.length === 0) return 0;
   const supabase = getSupabaseClient();
 
@@ -448,7 +443,7 @@ async function applyStatusUpdates(
   // the previous value for good.
   const historyRows = updates.map((u) => ({
     case_id: u.id,
-    field_name: "status",
+    field_name: u.field,
     previous_value: u.from,
     edited_by: editorId,
     // Dated from the sheet, like the comments — the change happened when the
@@ -460,12 +455,13 @@ async function applyStatusUpdates(
     if (error) throw new Error(`寫入編輯紀錄失敗: ${error.message}`);
   }
 
-  // One statement per distinct (status, date) pair rather than per case —
-  // a few hundred rows normally collapse to a handful of round trips.
-  const groups = new Map<string, { status: string; date: string; ids: string[] }>();
+  // One statement per distinct (field, value, date) rather than per case.
+  // Priority over a few hundred rows is four values and a handful of dates,
+  // so this collapses to a few round trips instead of hundreds.
+  const groups = new Map<string, { field: SyncField; value: string; date: string; ids: string[] }>();
   for (const u of updates) {
-    const key = `${u.to} ${u.date}`;
-    const group = groups.get(key) ?? { status: u.to, date: u.date, ids: [] };
+    const key = `${u.field}\u0000${u.to}\u0000${u.date}`;
+    const group = groups.get(key) ?? { field: u.field, value: u.to, date: u.date, ids: [] };
     group.ids.push(u.id);
     groups.set(key, group);
   }
@@ -475,11 +471,11 @@ async function applyStatusUpdates(
     for (let i = 0; i < group.ids.length; i += 200) {
       const { data, error } = await supabase
         .from("cases")
-        .update({ status: group.status, update_date: group.date })
+        .update({ [SYNC_FIELDS[group.field].column]: group.value, update_date: group.date })
         .in("id", group.ids.slice(i, i + 200))
         .select("id")
         .returns<{ id: string }[]>();
-      if (error) throw new Error(`更新狀態失敗: ${error.message}`);
+      if (error) throw new Error(`更新 ${SYNC_FIELDS[group.field].label.zh} 失敗: ${error.message}`);
       updated += (data ?? []).length;
     }
   }

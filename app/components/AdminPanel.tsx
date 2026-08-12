@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/lib/permissions";
 import type { AdminUserRow, RoleRow } from "@/lib/permissionsServer";
 import type { ArchiveStatus } from "@/lib/archive";
-import type { ImportPlan } from "@/lib/sheetImport";
+import { SYNC_FIELDS, SYNC_FIELD_KEYS, type ImportPlan, type SyncField } from "@/lib/sheetImportShared";
 import { STATUS_LIST_KEY, type StatusRuleRow } from "@/lib/statusRulesShared";
 
 type Lang = "zh" | "en";
@@ -44,18 +44,18 @@ const STRINGS = {
   importNewCases: { zh: "將新增的案件", en: "Cases to add" },
   importNewComments: { zh: "將新增的回覆", en: "Replies to add" },
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
-  importStatusDiff: { zh: "狀態不一致", en: "Status differs" },
+  importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
   importNothing: { zh: "沒有需要補進來的東西，看板已經跟 Sheet 同步。", en: "Nothing to bring across — the board matches the sheet." },
   importDone: {
     zh: (c: number, m: number, s: number) =>
-      `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆，更新 ${s.toLocaleString()} 筆狀態。`,
+      `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆，更新 ${s.toLocaleString()} 個欄位。`,
     en: (c: number, m: number, s: number) =>
-      `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added, ${s.toLocaleString()} statuses updated.`,
+      `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added, ${s.toLocaleString()} fields updated.`,
   },
   importSample: { zh: "將新增的案件（前 20 筆）", en: "Cases to add (first 20)" },
   importSampleHint: {
     zh: "對照 Sheet 檢查每一欄是不是都對到正確的位置 —— 有欄位整排都是「—」，代表那一欄的表頭沒被認出來，先別匯入，告訴我。",
-    en: "Check each column against the sheet. A column showing “—” all the way down means its header wasn't recognised — don't import, tell me.",
+    en: "Check each column against the sheet. A column showing \u201c—\u201d all the way down means its header wasn't recognised — don't import, tell me.",
   },
   importColWho: { zh: "CS / OP", en: "CS / OP" },
   importColCategory: { zh: "部門 / 分類", en: "Dept / category" },
@@ -64,33 +64,36 @@ const STRINGS = {
     zh: (c: number, m: number) => `會新增 ${c.toLocaleString()} 筆案件與 ${m.toLocaleString()} 則回覆。`,
     en: (c: number, m: number) => `${c.toLocaleString()} cases and ${m.toLocaleString()} replies will be added.`,
   },
-  importConfirmNoStatus: {
+  importConfirmNoSync: {
     zh: "既有案件完全不會被更動。",
     en: "Existing cases are left completely untouched.",
   },
-  importConfirmStatus: {
-    zh: (s: number) =>
-      `另外會把 ${s.toLocaleString()} 筆既有案件的狀態改成 Sheet 上的值，看板現在的狀態會被覆蓋掉（舊值會留在該欄位的編輯紀錄裡）。`,
-    en: (s: number) =>
-      `It will also overwrite the status of ${s.toLocaleString()} existing cases with the sheet's value. The board's current status is replaced — the old value is kept in that field's edit history.`,
+  importConfirmSync: {
+    zh: (n: number, fields: string) =>
+      `另外會覆蓋既有案件的 ${fields}，共 ${n.toLocaleString()} 個欄位。看板現在的值會被 Sheet 的值取代（舊值會留在該欄位的編輯紀錄裡）。`,
+    en: (n: number, fields: string) =>
+      `It will also overwrite ${fields} on existing cases — ${n.toLocaleString()} fields in all. The board's current values are replaced; the old ones are kept in each field's edit history.`,
   },
   importConfirm: { zh: "確定匯入", en: "Import" },
 
-  importSyncStatus: { zh: "一併同步狀態", en: "Also sync statuses" },
-  importSyncStatusHint: {
-    zh: "勾起來的話，上面這些案件的狀態會改成 Sheet 上的值。預設不勾，是因為同一筆案件可能兩邊都動過 —— 如果你在工具上已經把它處理完了，Sheet 的舊狀態會把結果洗掉。先看過清單再決定。",
-    en: "Ticking this rewrites the statuses listed above with the sheet's value. It's off by default because a case can be touched on both sides — if you already finished it in the tool, the sheet's older status would undo that. Read the list first.",
+  importSyncTitle: { zh: "要同步哪些欄位", en: "Which fields to sync" },
+  importSyncHint: {
+    zh: "預設全部不勾，因為同一筆案件可能兩邊都動過 —— 如果你在工具上已經改過了，Sheet 的舊值會把它洗掉。勾起來的欄位才會被覆蓋，其餘完全不動。",
+    en: "All off by default: a case can be touched on both sides, and if you already changed it in the tool the sheet's older value would undo that. Only ticked fields are overwritten; everything else is left alone.",
   },
-  importStatusTitle: { zh: "狀態不一致的案件", en: "Cases whose status differs" },
-  importStatusHint: {
-    zh: "左邊是 Sheet 上的狀態，右邊是看板目前的狀態。不勾下面的選項的話，這些都不會被動到。",
-    en: "The sheet's status on the left, the board's current status on the right. Without the checkbox below, none of these are touched.",
+  importColField: { zh: "欄位", en: "Field" },
+  importColCount: { zh: "不一致筆數", en: "Cases differing" },
+  importColSync: { zh: "同步", en: "Sync" },
+  importDiffTitle: { zh: "差異明細", en: "The differences" },
+  importDiffHint: {
+    zh: "左邊是 Sheet 上的值，右邊是看板目前的值。只列出前 50 筆。",
+    en: "The sheet's value on the left, the board's current value on the right. First 50 only.",
   },
-  importColSheetStatus: { zh: "Sheet 狀態", en: "Sheet status" },
-  importColBoardStatus: { zh: "看板現在的狀態", en: "Status on the board" },
-  importStatusMore: {
-    zh: (n: number) => `…另外還有 ${n.toLocaleString()} 筆，一樣會一起同步。`,
-    en: (n: number) => `…and ${n.toLocaleString()} more, all synced together.`,
+  importColSheetValue: { zh: "Sheet 的值", en: "Sheet value" },
+  importColBoardValue: { zh: "看板現在的值", en: "Value on the board" },
+  importDiffMore: {
+    zh: (n: number) => `…另外還有 ${n.toLocaleString()} 筆差異未列出，勾選的欄位一樣會全部同步。`,
+    en: (n: number) => `…and ${n.toLocaleString()} more differences not listed; every ticked field syncs in full.`,
   },
 
   statusTitle: { zh: "哪些狀態算結案", en: "Which statuses count as finished" },
@@ -200,6 +203,12 @@ const ROLE_BADGE_CLASS: Record<string, string> = {
   support: "role-badge editor",
   viewer: "role-badge viewer",
 };
+
+/** Long values (content, mostly) would blow the diff table's columns open. */
+function truncate(v: string, max = 60): string {
+  const one = v.replace(/\s+/g, " ").trim();
+  return one.length > max ? `${one.slice(0, max)}…` : one;
+}
 
 function RoleBadge({ role }: { role: RoleRow | undefined }) {
   if (!role) return <span className="role-badge viewer">—</span>;
@@ -376,25 +385,38 @@ export default function AdminPanel({
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [importBoard, setImportBoard] = useState<"t1ho" | "ho">("t1ho");
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
-  // Off every time a plan is drawn up, so an earlier tick can't carry over
-  // into a later import the user hasn't looked at.
-  const [syncStatus, setSyncStatus] = useState(false);
+  // Cleared every time a plan is drawn up, so an earlier tick can't carry
+  // over into a later import the user hasn't looked at.
+  const [syncFields, setSyncFields] = useState<SyncField[]>([]);
+
+  // How many cases differ on each field, in the order the fields are defined
+  // rather than by count — a stable list is easier to re-read than one that
+  // reorders itself between previews.
+  const diffCounts = useMemo(() => {
+    const counts = new Map<SyncField, number>();
+    for (const c of plan?.fieldChanges ?? []) counts.set(c.field, (counts.get(c.field) ?? 0) + 1);
+    return SYNC_FIELD_KEYS.filter((f) => counts.has(f)).map((f) => ({ field: f, count: counts.get(f)! }));
+  }, [plan]);
+
+  const pendingSync = (plan?.fieldChanges ?? []).filter((c) => syncFields.includes(c.field)).length;
+
+  function toggleSyncField(field: SyncField, on: boolean) {
+    setSyncFields((prev) => (on ? [...prev, field] : prev.filter((f) => f !== field)));
+  }
 
   async function previewImport() {
     setPlan(null);
-    setSyncStatus(false);
+    setSyncFields([]);
     const data = await call(`/api/admin/sheet-import?board=${importBoard}`, "GET");
     if (data) setPlan(data as unknown as ImportPlan);
   }
 
   async function runImport() {
-    const data = await call(
-      `/api/admin/sheet-import?board=${importBoard}${syncStatus ? "&syncStatus=1" : ""}`,
-      "POST"
-    );
+    const query = syncFields.length > 0 ? `&syncFields=${syncFields.join(",")}` : "";
+    const data = await call(`/api/admin/sheet-import?board=${importBoard}${query}`, "POST");
     setImportConfirmOpen(false);
     if (!data) return;
-    setSyncStatus(false);
+    setSyncFields([]);
     setPlan(data.plan as unknown as ImportPlan);
     setNotice(
       t(
@@ -402,7 +424,7 @@ export default function AdminPanel({
         "importDone",
         Number(data.casesInserted ?? 0),
         Number(data.commentsInserted ?? 0),
-        Number(data.statusesUpdated ?? 0)
+        Number(data.fieldsUpdated ?? 0)
       )
     );
   }
@@ -806,7 +828,7 @@ export default function AdminPanel({
               {plan &&
                 (plan.newCases.length > 0 ||
                   plan.newComments.length > 0 ||
-                  (syncStatus && plan.statusChanges.length > 0)) && (
+                  pendingSync > 0) && (
                   <button type="button" className="primary" disabled={busy} onClick={() => setImportConfirmOpen(true)}>
                     {t(lang, "importRun")}
                   </button>
@@ -831,8 +853,8 @@ export default function AdminPanel({
                     <div className="l">{t(lang, "importNewComments")}</div>
                   </div>
                   <div className="archive-stat">
-                    <div className="n">{plan.statusChanges.length.toLocaleString()}</div>
-                    <div className="l">{t(lang, "importStatusDiff")}</div>
+                    <div className="n">{plan.fieldChanges.length.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importFieldDiff")}</div>
                   </div>
                   <div className="archive-stat">
                     <div className="n">{plan.unchanged.toLocaleString()}</div>
@@ -842,7 +864,7 @@ export default function AdminPanel({
 
                 {plan.newCases.length === 0 &&
                   plan.newComments.length === 0 &&
-                  plan.statusChanges.length === 0 && (
+                  plan.fieldChanges.length === 0 && (
                     <p className="hint" style={{ marginTop: 14 }}>
                       {t(lang, "importNothing")}
                     </p>
@@ -885,46 +907,70 @@ export default function AdminPanel({
                   </>
                 )}
 
-                {plan.statusChanges.length > 0 && (
+                {plan.fieldChanges.length > 0 && (
                   <>
                     <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
-                      {t(lang, "importStatusTitle")}
+                      {t(lang, "importSyncTitle")}
                     </p>
-                    <p className="hint">{t(lang, "importStatusHint")}</p>
+                    <p className="hint">{t(lang, "importSyncHint")}</p>
                     <div className="table-scroll" style={{ marginTop: 8 }}>
                       <table>
                         <thead>
                           <tr>
-                            <th>序列</th>
-                            <th>{t(lang, "importColSheetStatus")}</th>
-                            <th>{t(lang, "importColBoardStatus")}</th>
+                            <th>{t(lang, "importColField")}</th>
+                            <th>{t(lang, "importColCount")}</th>
+                            <th style={{ textAlign: "center" }}>{t(lang, "importColSync")}</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {plan.statusChanges.slice(0, 50).map((s) => (
-                            <tr key={s.seq}>
-                              <td>{s.seq}</td>
-                              <td>{s.from}</td>
-                              <td className="muted">{s.to || "—"}</td>
+                          {diffCounts.map(({ field, count }) => (
+                            <tr key={field}>
+                              <td>{SYNC_FIELDS[field].label[lang]}</td>
+                              <td className="muted">{count.toLocaleString()}</td>
+                              <td style={{ textAlign: "center" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={syncFields.includes(field)}
+                                  disabled={busy}
+                                  aria-label={SYNC_FIELDS[field].label[lang]}
+                                  onChange={(e) => toggleSyncField(field, e.target.checked)}
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    {plan.statusChanges.length > 50 && (
-                      <p className="hint">{t(lang, "importStatusMore", plan.statusChanges.length - 50)}</p>
-                    )}
 
-                    <label className="check-row" style={{ marginTop: 12 }}>
-                      <input
-                        type="checkbox"
-                        checked={syncStatus}
-                        disabled={busy}
-                        onChange={(e) => setSyncStatus(e.target.checked)}
-                      />
-                      <span>{t(lang, "importSyncStatus")}</span>
-                    </label>
-                    <p className="hint">{t(lang, "importSyncStatusHint")}</p>
+                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
+                      {t(lang, "importDiffTitle")}
+                    </p>
+                    <p className="hint">{t(lang, "importDiffHint")}</p>
+                    <div className="table-scroll" style={{ marginTop: 8 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>序列</th>
+                            <th>{t(lang, "importColField")}</th>
+                            <th>{t(lang, "importColSheetValue")}</th>
+                            <th>{t(lang, "importColBoardValue")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.fieldChanges.slice(0, 50).map((c) => (
+                            <tr key={`${c.seq}-${c.field}`}>
+                              <td>{c.seq}</td>
+                              <td className="muted">{SYNC_FIELDS[c.field].label[lang]}</td>
+                              <td>{truncate(c.from)}</td>
+                              <td className="muted">{truncate(c.to) || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {plan.fieldChanges.length > 50 && (
+                      <p className="hint">{t(lang, "importDiffMore", plan.fieldChanges.length - 50)}</p>
+                    )}
                   </>
                 )}
               </>
@@ -1059,9 +1105,14 @@ export default function AdminPanel({
         >
           <p>{t(lang, "importConfirmBody", plan.newCases.length, plan.newComments.length)}</p>
           <p>
-            {syncStatus && plan.statusChanges.length > 0
-              ? t(lang, "importConfirmStatus", plan.statusChanges.length)
-              : t(lang, "importConfirmNoStatus")}
+            {pendingSync > 0
+              ? t(
+                  lang,
+                  "importConfirmSync",
+                  pendingSync,
+                  syncFields.map((f) => SYNC_FIELDS[f].label[lang]).join("、")
+                )
+              : t(lang, "importConfirmNoSync")}
           </p>
         </Modal>
       )}

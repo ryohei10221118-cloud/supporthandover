@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/adminGuard";
 import { CASES_TAG } from "@/lib/cacheTags";
-import { applySheetImport, planSheetImport } from "@/lib/sheetImport";
+import { applySheetImport, isSyncField, planSheetImport } from "@/lib/sheetImport";
 import type { SupaBoard } from "@/lib/supabaseCases";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +28,16 @@ export async function POST(req: NextRequest) {
   const { deny } = await requireAdmin();
   if (deny) return deny;
   const board = boardFrom(req);
-  // Off unless asked for: overwriting a status is the only part of an import
-  // that can lose work done in the app.
-  const syncStatus = req.nextUrl.searchParams.get("syncStatus") === "1";
+  // Nothing unless named: overwriting a field is the only part of an import
+  // that can lose work done in the app, so the caller has to list each one.
+  // Unknown names are dropped rather than refused — the set is a UI checkbox
+  // list, and a stale tab shouldn't fail the whole import.
+  const syncFields = (req.nextUrl.searchParams.get("syncFields") ?? "")
+    .split(",")
+    .map((f) => f.trim())
+    .filter(isSyncField);
   try {
-    const result = await applySheetImport(board, { syncStatus });
+    const result = await applySheetImport(board, { syncFields });
     // Without this the board keeps serving its cached copy for up to five
     // minutes and the cases you just imported simply aren't there.
     revalidateTag(CASES_TAG, "max");
