@@ -669,20 +669,26 @@ function LinkCell({
   const text = (label ?? "").trim();
   return (
     <td className="link-cell">
-      <span className="link-content">
-        {text ? (
-          url ? (
-            <a className="ext-link" href={url} target="_blank" rel="noopener noreferrer">
-              {text}
-            </a>
+      {/* The value and its （已編輯）marker share one flex track, stacked. As
+          siblings they each took a track of their own, and since the marker
+          can't shrink it claimed its full width out of a narrow column —
+          which is what squeezed "BD-79869" down to one character per line. */}
+      <span className="link-main">
+        <span className="link-content">
+          {text ? (
+            url ? (
+              <a className="ext-link" href={url} target="_blank" rel="noopener noreferrer">
+                {text}
+              </a>
+            ) : (
+              text
+            )
           ) : (
-            text
-          )
-        ) : (
-          <span style={{ color: "var(--text-muted)" }}>—</span>
-        )}
+            <span style={{ color: "var(--text-muted)" }}>—</span>
+          )}
+        </span>
+        {historyTag}
       </span>
-      {historyTag}
       {onEdit && (
         <button type="button" className="link-edit-btn" onClick={onEdit} aria-label="edit">
           ✎

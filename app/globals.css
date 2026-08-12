@@ -878,9 +878,16 @@ button.primary:disabled {
   gap: 6px;
 }
 
-.link-cell .link-content {
+/* The value and its （已編輯）marker stack inside a single flex track, so the
+   marker can't take width away from the value in a narrow column. */
+.link-main {
   flex: 1;
   min-width: 0;
+}
+
+.link-main .edited-tag {
+  display: block;
+  margin-left: 0;
 }
 
 .link-edit-btn {
