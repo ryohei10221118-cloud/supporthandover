@@ -8,6 +8,7 @@ export interface CaseRow {
   note: string;
   department: string;
   cs: string;
+  priority: string;
   reply: string;
   status: CaseStatus;
   issue: string;

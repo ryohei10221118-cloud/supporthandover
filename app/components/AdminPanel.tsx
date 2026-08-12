@@ -863,6 +863,7 @@ export default function AdminPanel({
                             <th>狀態</th>
                             <th>{t(lang, "importColWho")}</th>
                             <th>{t(lang, "importColCategory")}</th>
+                            <th>Priority</th>
                             <th>內容</th>
                           </tr>
                         </thead>
@@ -874,6 +875,7 @@ export default function AdminPanel({
                               <td className="muted">{c.status}</td>
                               <td className="muted">{c.who || "—"}</td>
                               <td className="muted">{c.category || "—"}</td>
+                              <td className="muted">{c.priority || "—"}</td>
                               <td className="muted">{c.content.slice(0, 60)}</td>
                             </tr>
                           ))}

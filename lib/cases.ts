@@ -63,6 +63,7 @@ export function parseCaseRows(rows: string[][]): CaseRow[] {
       note: cell(row, "note"),
       department: cell(row, "department"),
       cs: cell(row, "cs"),
+      priority: cell(row, "priority"),
       reply: cell(row, "reply"),
       status,
       issue: cell(row, "issue"),

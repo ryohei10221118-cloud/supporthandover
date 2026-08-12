@@ -56,6 +56,7 @@ interface MappedRow {
   hoClass: string | null;
   op: string | null;
   cs: string | null;
+  priority: string;
   issueTag: string | null;
   relatedTicketLabel: string | null;
   noteLabel: string | null;
@@ -73,6 +74,7 @@ export interface ImportPlanCase {
   // nothing — is visible before anything is written, not after.
   who: string;
   category: string;
+  priority: string;
 }
 
 export interface ImportPlanComment {
@@ -180,6 +182,7 @@ async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
       hoClass: null,
       op: blankToNull(r.op),
       cs: blankToNull(r.cs),
+      priority: r.priority.trim(),
       issueTag: blankToNull(r.issue),
       relatedTicketLabel: null,
       noteLabel: null,
@@ -198,6 +201,8 @@ async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
     hoClass: blankToNull(r.classification),
     op: blankToNull(r.op),
     cs: blankToNull(r.cs),
+    // The HO tab has no Priority column — only T1 HO tracks it.
+    priority: "",
     issueTag: null,
     relatedTicketLabel: blankToNull(r.relatedTicket),
     noteLabel: blankToNull(r.note),
@@ -299,6 +304,7 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
         content: row.content,
         who: [row.cs, row.op].filter(Boolean).join(" / "),
         category: [row.dept, row.hoType, row.hoClass].filter(Boolean).join(" / "),
+        priority: row.priority,
       });
       if (row.reply) plan.newComments.push({ seq: row.seq, body: row.reply });
       continue;
@@ -388,7 +394,7 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
       cs: r.cs ?? "",
       content: r.content,
       status: r.status,
-      priority: "",
+      priority: r.priority,
       issue_tag: r.issueTag,
       related_ticket_label: r.relatedTicketLabel,
       note_label: r.noteLabel,

@@ -18,6 +18,7 @@ export const HEADER_KEYWORDS: Record<ColumnKey, string[]> = {
   note: ["问题", "問題", "追踪", "追蹤"],
   department: ["部门", "部門"],
   cs: ["cs"],
+  priority: ["priority"],
   reply: ["回答内容", "回答內容", "回答"],
   status: ["status", "狀態", "状态"],
   issue: ["issue"],
