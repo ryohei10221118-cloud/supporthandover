@@ -11,6 +11,7 @@ import type {
   ImportOptions,
   ImportPlan,
   ImportPlanCase,
+  ImportPlanDuplicate,
   ImportResult,
   SyncField,
 } from "./sheetImportShared";
@@ -240,6 +241,7 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
     sheetRows: rows.length,
     newCases: [],
     newComments: [],
+    duplicates: findDuplicateSeqs(rows),
     fieldChanges: [],
     unchanged: 0,
     skipped: 0,
@@ -287,6 +289,42 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
   }
 
   return plan;
+}
+
+/**
+ * Sequence numbers the sheet uses on more than one row.
+ *
+ * Matching is by number, so a repeat has nothing of its own to be matched by:
+ * the import keeps the first row and drops the rest. That is a real case going
+ * missing, and it used to disappear into the skipped count with no way to tell
+ * it from an empty template row — so it gets listed instead, with enough of
+ * each row to see whether it's the same case entered twice or two different
+ * cases that happen to share a number.
+ */
+function findDuplicateSeqs(rows: MappedRow[]): ImportPlanDuplicate[] {
+  const bySeq = new Map<string, MappedRow[]>();
+  for (const row of rows) {
+    if (!row.seq) continue;
+    const list = bySeq.get(row.seq);
+    if (list) list.push(row);
+    else bySeq.set(row.seq, [row]);
+  }
+
+  const out: ImportPlanDuplicate[] = [];
+  for (const [seq, list] of bySeq) {
+    if (list.length < 2) continue;
+    out.push({
+      seq,
+      rows: list.map((r) => ({
+        date: r.createDate,
+        status: r.status,
+        cs: r.cs ?? "",
+        content: r.content,
+      })),
+    });
+  }
+  // Sheet order, so the list reads the way the sheet does.
+  return out.sort((a, b) => a.seq.localeCompare(b.seq, undefined, { numeric: true }));
 }
 
 /** The sheet's value for a field, as a plain string. */

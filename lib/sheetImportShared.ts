@@ -71,11 +71,36 @@ export interface ImportPlanFieldChange {
   to: string;
 }
 
+/** One row of a sheet sequence number that appears more than once. */
+export interface ImportPlanDuplicateRow {
+  date: string;
+  status: string;
+  cs: string;
+  content: string;
+}
+
+/**
+ * A sequence number used by more than one row of the sheet.
+ *
+ * The number is how a case is matched, so the second row onwards has nothing
+ * of its own to be matched by and is left out of the import entirely. That is
+ * a case quietly going missing, which is why these are reported rather than
+ * folded into the skipped count.
+ */
+export interface ImportPlanDuplicate {
+  seq: string;
+  /** Every row carrying the number, in sheet order. The first is the one the
+   *  import uses; the rest are dropped. */
+  rows: ImportPlanDuplicateRow[];
+}
+
 export interface ImportPlan {
   board: Board;
   sheetRows: number;
   newCases: ImportPlanCase[];
   newComments: ImportPlanComment[];
+  /** Sequence numbers the sheet reuses. Nothing is imported for the repeats. */
+  duplicates: ImportPlanDuplicate[];
   /**
    * Existing cases where the sheet and the board disagree. Listed, never
    * applied on their own: syncing is opt-in per field because the board's
@@ -85,7 +110,7 @@ export interface ImportPlan {
   fieldChanges: ImportPlanFieldChange[];
   /** Rows already fully represented — nothing to do. */
   unchanged: number;
-  /** Rows with no id, or a repeat of one already seen. */
+  /** Rows with no sequence number, or a repeat of one already seen. */
   skipped: number;
 }
 

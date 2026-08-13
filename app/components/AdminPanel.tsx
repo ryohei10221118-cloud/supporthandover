@@ -45,6 +45,15 @@ const STRINGS = {
   importNewComments: { zh: "將新增的回覆", en: "Replies to add" },
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
+  importDupCount: { zh: "序列重複", en: "Duplicate IDs" },
+  importDupTitle: { zh: "Sheet 上重複的序列", en: "Sequence numbers the sheet reuses" },
+  importDupHint: {
+    zh: "案件是靠序列比對的，所以同一個序列的第二列以後沒有東西可以對應，匯入時會被整列丟掉 —— 等於那筆案件不見了。請在 Sheet 上把重複的那幾列改成沒用過的號碼，再回來重新試算；只要改這幾列，不用重編整份序列。",
+    en: "Cases are matched by their number, so the second row onwards has nothing to match on and is dropped from the import — that case simply goes missing. Give the repeats an unused number in the sheet and preview again. Only these rows need changing, not the whole sequence.",
+  },
+  importDupKept: { zh: "會匯入", en: "imported" },
+  importDupDropped: { zh: "會被丟掉", en: "dropped" },
+  importColRow: { zh: "這一列", en: "This row" },
   importNothing: { zh: "沒有需要補進來的東西，看板已經跟 Sheet 同步。", en: "Nothing to bring across — the board matches the sheet." },
   importDone: {
     zh: (c: number, m: number, s: number) =>
@@ -856,6 +865,10 @@ export default function AdminPanel({
                     <div className="n">{plan.fieldChanges.length.toLocaleString()}</div>
                     <div className="l">{t(lang, "importFieldDiff")}</div>
                   </div>
+                  <div className={`archive-stat${plan.duplicates.length > 0 ? " warn" : ""}`}>
+                    <div className="n">{plan.duplicates.length.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importDupCount")}</div>
+                  </div>
                   <div className="archive-stat">
                     <div className="n">{plan.unchanged.toLocaleString()}</div>
                     <div className="l">{t(lang, "importUnchanged")}</div>
@@ -864,11 +877,51 @@ export default function AdminPanel({
 
                 {plan.newCases.length === 0 &&
                   plan.newComments.length === 0 &&
-                  plan.fieldChanges.length === 0 && (
+                  plan.fieldChanges.length === 0 &&
+                  plan.duplicates.length === 0 && (
                     <p className="hint" style={{ marginTop: 14 }}>
                       {t(lang, "importNothing")}
                     </p>
                   )}
+
+                {plan.duplicates.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
+                      {t(lang, "importDupTitle")}
+                    </p>
+                    <div className="banner">{t(lang, "importDupHint")}</div>
+                    <div className="table-scroll" style={{ marginTop: 8 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>序列</th>
+                            <th>{t(lang, "importColRow")}</th>
+                            <th>日期</th>
+                            <th>狀態</th>
+                            <th>CS</th>
+                            <th>內容</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.duplicates.map((d) =>
+                            d.rows.map((r, i) => (
+                              <tr key={`${d.seq}-${i}`}>
+                                <td>{i === 0 ? d.seq : ""}</td>
+                                <td className={i === 0 ? "muted" : "dup-dropped"}>
+                                  {i === 0 ? t(lang, "importDupKept") : t(lang, "importDupDropped")}
+                                </td>
+                                <td className="muted">{r.date || "—"}</td>
+                                <td className="muted">{r.status || "—"}</td>
+                                <td className="muted">{r.cs || "—"}</td>
+                                <td className="muted">{truncate(r.content, 70) || "—"}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
 
                 {plan.newCases.length > 0 && (
                   <>
