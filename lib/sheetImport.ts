@@ -290,6 +290,22 @@ function allocateSeq(base: string, taken: Set<string>): string {
   }
 }
 
+/**
+ * Whether two rows say the same thing. Compared on the opening of the text
+ * rather than the whole of it: a case's content gets appended to over its
+ * life, on the board and in the sheet alike, but how it opens is what the
+ * case is about and that doesn't change.
+ */
+function sameContent(row: MappedRow, existing: ExistingCase): boolean {
+  const a = contentKey(row.content);
+  const b = contentKey((existing.content ?? "").toString());
+  return a.length > 0 && a === b;
+}
+
+function contentKey(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 60).toLowerCase();
+}
+
 function sameDate(sheetDate: string, boardDate: string | null): boolean {
   const a = toDateOrNull(sheetDate);
   const b = (boardDate ?? "").trim();
@@ -352,18 +368,31 @@ function resolveRows(rows: MappedRow[], existing: ExistingIndex): Resolution {
       resolution.matched.push({ row: group[0], match: candidates[0] });
       assigned.set(group[0], { seq: candidates[0].seq, alreadyOnBoard: true });
     } else {
-      const unpaired: MappedRow[] = [];
-      for (const row of group) {
-        const match = candidates.find(
-          (c) => !claimed.has(c.id) && sameDate(row.createDate, c.create_date ?? null)
-        );
-        if (match) {
-          claimed.add(match.id);
-          resolution.matched.push({ row, match });
-          assigned.set(row, { seq: match.seq, alreadyOnBoard: true });
-        } else {
-          unpaired.push(row);
+      // Strongest evidence first. A number reused on the *same day* — which
+      // happens — leaves the date unable to separate the rows, and pairing
+      // whichever comes first then puts a case's content against another
+      // case's number. What a case says is the best evidence of which case
+      // it is, so content settles those before the date is consulted at all.
+      let unpaired = group;
+      for (const test of [
+        (r: MappedRow, c: ExistingCase) =>
+          sameDate(r.createDate, c.create_date ?? null) && sameContent(r, c),
+        (r: MappedRow, c: ExistingCase) => sameContent(r, c),
+        (r: MappedRow, c: ExistingCase) => sameDate(r.createDate, c.create_date ?? null),
+      ]) {
+        const stillUnpaired: MappedRow[] = [];
+        for (const row of unpaired) {
+          const match = candidates.find((c) => !claimed.has(c.id) && test(row, c));
+          if (match) {
+            claimed.add(match.id);
+            resolution.matched.push({ row, match });
+            assigned.set(row, { seq: match.seq, alreadyOnBoard: true });
+          } else {
+            stillUnpaired.push(row);
+          }
         }
+        unpaired = stillUnpaired;
+        if (unpaired.length === 0) break;
       }
       for (const row of unpaired) {
         const next = allocateSeq(seq, taken);
