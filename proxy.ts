@@ -7,10 +7,24 @@ import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 // routes alike, so e.g. /api/cases-supabase can't be read anonymously either.
 const PUBLIC_PATHS = ["/login"];
 
+/**
+ * Paths that carry their own authorisation instead of a session cookie.
+ *
+ * The scheduled import is invoked by Vercel Cron, which has no session to
+ * present — it sends CRON_SECRET as a bearer token, and the route checks it.
+ * Letting it past here is what makes that check reachable; the route refuses
+ * every request when the secret isn't configured, so this doesn't open
+ * anything up.
+ */
+const SELF_AUTHORISED_PREFIXES = ["/api/auth/", "/api/cron/"];
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) || pathname.startsWith("/api/auth/")) {
+  if (
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
+    SELF_AUTHORISED_PREFIXES.some((p) => pathname.startsWith(p))
+  ) {
     return NextResponse.next();
   }
 
