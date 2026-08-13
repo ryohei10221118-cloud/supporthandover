@@ -46,7 +46,17 @@ const STRINGS = {
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
   importDupCount: { zh: "序列重複", en: "Reused IDs" },
-  importDupTitle: { zh: "Sheet 上重複的序列", en: "Sequence numbers the sheet reuses" },
+  importDupTitle: { zh: "序列重複、還沒補進來的", en: "Reused numbers still to bring in" },
+  importDupAllDone: {
+    zh: (n: number) =>
+      `Sheet 上有 ${n.toLocaleString()} 個序列被重複使用，但每一列都已經對應到看板上的案件了，沒有需要處理的。`,
+    en: (n: number) =>
+      `${n.toLocaleString()} numbers are reused in the sheet, but every row already has its case on the board — nothing to do.`,
+  },
+  importDupSomeDone: {
+    zh: (n: number) => `另有 ${n.toLocaleString()} 個重複的序列已經全部對應完，沒有列出來。`,
+    en: (n: number) => `Another ${n.toLocaleString()} reused numbers are fully accounted for and aren't listed.`,
+  },
   importDupHint: {
     zh: "這些序列在 Sheet 上被用在不只一列。比對改用「序列 + 日期」來配對 —— 同一個號碼隔了很久才會被重複使用，所以加上日期就分得出來了。配不到看板案件的那幾列，會用加後綴的號碼（例如 HO1280-2）建立，不會被丟掉。Sheet 一個字都不用改。",
     en: "These numbers appear on more than one row. Rows are paired with the board on number plus date instead — a number is only ever reused a long way from where it was first used, so the pair tells them apart. Rows with no counterpart are created under a suffixed number (HO1280-2) rather than dropped. Nothing in the sheet needs changing.",
@@ -410,6 +420,14 @@ export default function AdminPanel({
   }, [plan]);
 
   const pendingSync = (plan?.fieldChanges ?? []).filter((c) => syncFields.includes(c.field)).length;
+
+  // A reused number whose rows are all on the board is settled — listing it
+  // again buries the handful that still need a look under a hundred that
+  // don't.
+  const openDuplicates = useMemo(
+    () => (plan?.duplicates ?? []).filter((d) => d.rows.some((r) => !r.alreadyOnBoard)),
+    [plan]
+  );
 
   function toggleSyncField(field: SyncField, on: boolean) {
     setSyncFields((prev) => (on ? [...prev, field] : prev.filter((f) => f !== field)));
@@ -886,7 +904,13 @@ export default function AdminPanel({
                     </p>
                   )}
 
-                {plan.duplicates.length > 0 && (
+                {plan.duplicates.length > 0 && openDuplicates.length === 0 && (
+                  <p className="hint" style={{ marginTop: 20 }}>
+                    {t(lang, "importDupAllDone", plan.duplicates.length)}
+                  </p>
+                )}
+
+                {openDuplicates.length > 0 && (
                   <>
                     <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
                       {t(lang, "importDupTitle")}
@@ -906,7 +930,7 @@ export default function AdminPanel({
                           </tr>
                         </thead>
                         <tbody>
-                          {plan.duplicates.map((d) =>
+                          {openDuplicates.map((d) =>
                             d.rows.map((r, i) => (
                               <tr key={`${d.seq}-${i}`}>
                                 <td>{i === 0 ? d.seq : ""}</td>
@@ -926,6 +950,11 @@ export default function AdminPanel({
                         </tbody>
                       </table>
                     </div>
+                    {plan.duplicates.length > openDuplicates.length && (
+                      <p className="hint">
+                        {t(lang, "importDupSomeDone", plan.duplicates.length - openDuplicates.length)}
+                      </p>
+                    )}
                   </>
                 )}
 
