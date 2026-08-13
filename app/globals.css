@@ -2979,19 +2979,9 @@ select.threshold:focus {
   font-weight: 700;
 }
 
-/* A duplicate sequence number means a case is being dropped, so the tile
-   reads as a problem rather than another statistic. */
-.archive-stat.warn {
-  border-color: var(--overdue);
-  background: var(--overdue-bg);
-}
-
-.archive-stat.warn .n {
-  color: var(--overdue);
-}
-
-.dup-dropped {
-  color: var(--overdue);
+/* The number differs from what the sheet says, so it's worth spotting. */
+.dup-renumbered {
+  color: var(--accent);
   font-weight: 600;
 }
 

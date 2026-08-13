@@ -45,7 +45,11 @@ export function syncFieldsForBoard(board: Board): SyncField[] {
 }
 
 export interface ImportPlanCase {
+  /** The number it will be created under. */
   seq: string;
+  /** What the sheet calls it. Differs from seq only when the sheet reuses a
+   *  number and this row has to be given a free one. */
+  sheetSeq: string;
   date: string;
   status: string;
   content: string;
@@ -77,20 +81,24 @@ export interface ImportPlanDuplicateRow {
   status: string;
   cs: string;
   content: string;
+  /** The number this row ends up under: the sheet's if it's free or already
+   *  this row's, otherwise a suffixed one. */
+  assignedSeq: string;
+  /** Whether the board already has this row, so nothing is created for it. */
+  alreadyOnBoard: boolean;
 }
 
 /**
  * A sequence number used by more than one row of the sheet.
  *
- * The number is how a case is matched, so the second row onwards has nothing
- * of its own to be matched by and is left out of the import entirely. That is
- * a case quietly going missing, which is why these are reported rather than
- * folded into the skipped count.
+ * The number alone can't say which case a row is, so rows are paired with the
+ * board on (number, date) instead — that pair is unique even where the number
+ * is not. Whatever is left over is a case the board has never seen, and it is
+ * brought in under a suffixed number rather than dropped.
  */
 export interface ImportPlanDuplicate {
   seq: string;
-  /** Every row carrying the number, in sheet order. The first is the one the
-   *  import uses; the rest are dropped. */
+  /** Every row carrying the number, in sheet order. */
   rows: ImportPlanDuplicateRow[];
 }
 
@@ -99,7 +107,7 @@ export interface ImportPlan {
   sheetRows: number;
   newCases: ImportPlanCase[];
   newComments: ImportPlanComment[];
-  /** Sequence numbers the sheet reuses. Nothing is imported for the repeats. */
+  /** Sequence numbers the sheet reuses, and what each row resolves to. */
   duplicates: ImportPlanDuplicate[];
   /**
    * Existing cases where the sheet and the board disagree. Listed, never

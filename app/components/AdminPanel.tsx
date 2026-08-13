@@ -45,15 +45,17 @@ const STRINGS = {
   importNewComments: { zh: "將新增的回覆", en: "Replies to add" },
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
-  importDupCount: { zh: "序列重複", en: "Duplicate IDs" },
+  importDupCount: { zh: "序列重複", en: "Reused IDs" },
   importDupTitle: { zh: "Sheet 上重複的序列", en: "Sequence numbers the sheet reuses" },
   importDupHint: {
-    zh: "案件是靠序列比對的，所以同一個序列的第二列以後沒有東西可以對應，匯入時會被整列丟掉 —— 等於那筆案件不見了。請在 Sheet 上把重複的那幾列改成沒用過的號碼，再回來重新試算；只要改這幾列，不用重編整份序列。",
-    en: "Cases are matched by their number, so the second row onwards has nothing to match on and is dropped from the import — that case simply goes missing. Give the repeats an unused number in the sheet and preview again. Only these rows need changing, not the whole sequence.",
+    zh: "這些序列在 Sheet 上被用在不只一列。比對改用「序列 + 日期」來配對 —— 同一個號碼隔了很久才會被重複使用，所以加上日期就分得出來了。配不到看板案件的那幾列，會用加後綴的號碼（例如 HO1280-2）建立，不會被丟掉。Sheet 一個字都不用改。",
+    en: "These numbers appear on more than one row. Rows are paired with the board on number plus date instead — a number is only ever reused a long way from where it was first used, so the pair tells them apart. Rows with no counterpart are created under a suffixed number (HO1280-2) rather than dropped. Nothing in the sheet needs changing.",
   },
-  importDupKept: { zh: "會匯入", en: "imported" },
-  importDupDropped: { zh: "會被丟掉", en: "dropped" },
+  importDupOnBoard: { zh: "已在看板", en: "on the board" },
+  importDupWillAdd: { zh: "將新增", en: "will be added" },
   importColRow: { zh: "這一列", en: "This row" },
+  importColAssigned: { zh: "會用的序列", en: "Number used" },
+  importColSheetSeq: { zh: "Sheet 序列", en: "Sheet number" },
   importNothing: { zh: "沒有需要補進來的東西，看板已經跟 Sheet 同步。", en: "Nothing to bring across — the board matches the sheet." },
   importDone: {
     zh: (c: number, m: number, s: number) =>
@@ -865,7 +867,7 @@ export default function AdminPanel({
                     <div className="n">{plan.fieldChanges.length.toLocaleString()}</div>
                     <div className="l">{t(lang, "importFieldDiff")}</div>
                   </div>
-                  <div className={`archive-stat${plan.duplicates.length > 0 ? " warn" : ""}`}>
+                  <div className="archive-stat">
                     <div className="n">{plan.duplicates.length.toLocaleString()}</div>
                     <div className="l">{t(lang, "importDupCount")}</div>
                   </div>
@@ -889,12 +891,13 @@ export default function AdminPanel({
                     <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
                       {t(lang, "importDupTitle")}
                     </p>
-                    <div className="banner">{t(lang, "importDupHint")}</div>
+                    <p className="hint">{t(lang, "importDupHint")}</p>
                     <div className="table-scroll" style={{ marginTop: 8 }}>
                       <table>
                         <thead>
                           <tr>
-                            <th>序列</th>
+                            <th>{t(lang, "importColSheetSeq")}</th>
+                            <th>{t(lang, "importColAssigned")}</th>
                             <th>{t(lang, "importColRow")}</th>
                             <th>日期</th>
                             <th>狀態</th>
@@ -907,8 +910,11 @@ export default function AdminPanel({
                             d.rows.map((r, i) => (
                               <tr key={`${d.seq}-${i}`}>
                                 <td>{i === 0 ? d.seq : ""}</td>
-                                <td className={i === 0 ? "muted" : "dup-dropped"}>
-                                  {i === 0 ? t(lang, "importDupKept") : t(lang, "importDupDropped")}
+                                <td className={r.assignedSeq === d.seq ? "muted" : "dup-renumbered"}>
+                                  {r.assignedSeq}
+                                </td>
+                                <td className="muted">
+                                  {r.alreadyOnBoard ? t(lang, "importDupOnBoard") : t(lang, "importDupWillAdd")}
                                 </td>
                                 <td className="muted">{r.date || "—"}</td>
                                 <td className="muted">{r.status || "—"}</td>
@@ -945,7 +951,14 @@ export default function AdminPanel({
                         <tbody>
                           {plan.newCases.slice(0, 20).map((c) => (
                             <tr key={c.seq}>
-                              <td>{c.seq}</td>
+                              <td>
+                                {c.seq}
+                                {/* Only worth showing when they differ — that
+                                    is, when the sheet reused this number. */}
+                                {c.sheetSeq !== c.seq && (
+                                  <span className="muted"> ← {c.sheetSeq}</span>
+                                )}
+                              </td>
                               <td className="muted">{c.date}</td>
                               <td className="muted">{c.status}</td>
                               <td className="muted">{c.who || "—"}</td>

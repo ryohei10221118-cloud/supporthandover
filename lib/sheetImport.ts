@@ -177,10 +177,17 @@ type ExistingCase = { id: string; seq: string } & Record<string, string | null>;
 // re-creating one the sheet still lists would undo the deletion silently.
 const EXISTING_COLUMNS = ["id", "seq", ...SYNC_FIELD_KEYS.map((k) => SYNC_FIELDS[k].column)].join(", ");
 
-async function loadExisting(board: SupaBoard): Promise<{
-  bySeq: Map<string, ExistingCase>;
+interface ExistingIndex {
+  /** Existing cases grouped by their number with any -N suffix removed, so a
+   *  row the import previously suffixed is still found under the sheet's
+   *  number. Sorted within each group for a stable pairing order. */
+  byBase: Map<string, ExistingCase[]>;
+  /** Every number in use, suffixed ones included — what a new row must avoid. */
+  taken: Set<string>;
   bodiesByCase: Map<string, Set<string>>;
-}> {
+}
+
+async function loadExisting(board: SupaBoard): Promise<ExistingIndex> {
   const supabase = getSupabaseClient();
   const PAGE = 1000;
 
@@ -199,8 +206,19 @@ async function loadExisting(board: SupaBoard): Promise<{
     if (page.length < PAGE) break;
   }
 
-  const bySeq = new Map<string, ExistingCase>();
-  for (const c of cases) bySeq.set(c.seq.trim(), c);
+  const byBase = new Map<string, ExistingCase[]>();
+  const taken = new Set<string>();
+  for (const c of cases) {
+    const seq = (c.seq ?? "").trim();
+    taken.add(seq);
+    const key = baseSeq(seq);
+    const list = byBase.get(key);
+    if (list) list.push(c);
+    else byBase.set(key, [c]);
+  }
+  for (const list of byBase.values()) {
+    list.sort((a, b) => (a.seq ?? "").localeCompare(b.seq ?? ""));
+  }
 
   const caseIds = new Set(cases.map((c) => c.id));
   const bodiesByCase = new Map<string, Set<string>>();
@@ -224,107 +242,132 @@ async function loadExisting(board: SupaBoard): Promise<{
     if (page.length < PAGE) break;
   }
 
-  return { bySeq, bodiesByCase };
-}
-
-/** Works out what an import would do, without writing anything. */
-export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
-  if (!hasServiceAccountConfig()) {
-    throw new Error(
-      "Google Sheets 服務帳戶未設定，請確認 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY / SHEET_ID 環境變數。"
-    );
-  }
-
-  const [rows, existing] = await Promise.all([readSheet(board), loadExisting(board)]);
-  const plan: ImportPlan = {
-    board,
-    sheetRows: rows.length,
-    newCases: [],
-    newComments: [],
-    duplicates: findDuplicateSeqs(rows),
-    fieldChanges: [],
-    unchanged: 0,
-    skipped: 0,
-  };
-  const fields = syncFieldsForBoard(board);
-  const seen = new Set<string>();
-
-  for (const row of rows) {
-    if (!row.seq || seen.has(row.seq)) {
-      plan.skipped += 1;
-      continue;
-    }
-    seen.add(row.seq);
-
-    const match = existing.bySeq.get(row.seq);
-    if (!match) {
-      plan.newCases.push({
-        seq: row.seq,
-        date: row.createDate,
-        status: row.status,
-        content: row.content,
-        who: [row.cs, row.op].filter(Boolean).join(" / "),
-        category: [row.dept, row.hoType, row.hoClass].filter(Boolean).join(" / "),
-        priority: row.priority,
-      });
-      if (row.reply) plan.newComments.push({ seq: row.seq, body: row.reply });
-      continue;
-    }
-
-    let touched = false;
-
-    if (row.reply && !(existing.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
-      plan.newComments.push({ seq: row.seq, body: row.reply });
-      touched = true;
-    }
-
-    for (const field of fields) {
-      const diff = fieldDiff(row, match, field);
-      if (!diff) continue;
-      plan.fieldChanges.push({ seq: row.seq, field, ...diff });
-      touched = true;
-    }
-
-    if (!touched) plan.unchanged += 1;
-  }
-
-  return plan;
+  return { byBase, taken, bodiesByCase };
 }
 
 /**
- * Sequence numbers the sheet uses on more than one row.
+ * A number without the suffix this import may have added: "HO1280-2" is a row
+ * the board holds under the sheet's "HO1280".
  *
- * Matching is by number, so a repeat has nothing of its own to be matched by:
- * the import keeps the first row and drops the rest. That is a real case going
- * missing, and it used to disappear into the skipped count with no way to tell
- * it from an empty template row — so it gets listed instead, with enough of
- * each row to see whether it's the same case entered twice or two different
- * cases that happen to share a number.
+ * Only a trailing "-<digits>" counts, which case numbers never contain of
+ * their own accord — they are a prefix and a run of digits.
  */
-function findDuplicateSeqs(rows: MappedRow[]): ImportPlanDuplicate[] {
-  const bySeq = new Map<string, MappedRow[]>();
+function baseSeq(seq: string): string {
+  return seq.trim().replace(/-\d+$/, "");
+}
+
+/** The first free number at or after `base`: base, base-2, base-3… */
+function allocateSeq(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+function sameDate(sheetDate: string, boardDate: string | null): boolean {
+  const a = toDateOrNull(sheetDate);
+  const b = (boardDate ?? "").trim();
+  return !!a && a === b;
+}
+
+interface Resolution {
+  /** Sheet rows paired with the case they describe. */
+  matched: { row: MappedRow; match: ExistingCase }[];
+  /** Sheet rows the board has never seen, and the number each will get. */
+  created: { row: MappedRow; seq: string }[];
+  /** Numbers the sheet reuses, with what each of their rows resolved to. */
+  duplicates: ImportPlanDuplicate[];
+  /** Rows carrying no number at all — blank template rows, mostly. */
+  blank: number;
+}
+
+/**
+ * Works out which sheet row is which case. Shared by the dry run and the
+ * apply so the two can never disagree about what an import would do.
+ *
+ * The number alone is not an identifier in these sheets: T1 HO's restarts, so
+ * HO1280 names a case from December 2024 near the top and a different one from
+ * October 2025 a thousand rows further down. Pairing on (number, date) tells
+ * them apart, because a number is only ever reused a long way from where it
+ * was first used.
+ *
+ * Rows left without a partner are cases the board has never held. They are
+ * created under a suffixed number rather than dropped — dropping them is how
+ * a case silently goes missing, and renumbering the sheet by hand across
+ * hundreds of historic rows is worse than the problem.
+ */
+function resolveRows(rows: MappedRow[], existing: ExistingIndex): Resolution {
+  const groups = new Map<string, MappedRow[]>();
+  let blank = 0;
   for (const row of rows) {
-    if (!row.seq) continue;
-    const list = bySeq.get(row.seq);
+    if (!row.seq) {
+      blank += 1;
+      continue;
+    }
+    const list = groups.get(row.seq);
     if (list) list.push(row);
-    else bySeq.set(row.seq, [row]);
+    else groups.set(row.seq, [row]);
   }
 
-  const out: ImportPlanDuplicate[] = [];
-  for (const [seq, list] of bySeq) {
-    if (list.length < 2) continue;
-    out.push({
-      seq,
-      rows: list.map((r) => ({
-        date: r.createDate,
-        status: r.status,
-        cs: r.cs ?? "",
-        content: r.content,
-      })),
-    });
+  // Every number already on the board, plus the ones handed out below, so two
+  // unmatched rows in the same group can't be given the same number.
+  const taken = new Set(existing.taken);
+  const resolution: Resolution = { matched: [], created: [], duplicates: [], blank };
+
+  for (const [seq, group] of groups) {
+    const candidates = existing.byBase.get(seq) ?? [];
+    const claimed = new Set<string>();
+    const assigned = new Map<MappedRow, { seq: string; alreadyOnBoard: boolean }>();
+
+    // The ordinary case: one row, one case, nothing to disambiguate. Pairing
+    // it without consulting the date matters — dates get corrected on the
+    // board, and a corrected date shouldn't turn a case into a new one.
+    if (group.length === 1 && candidates.length === 1) {
+      resolution.matched.push({ row: group[0], match: candidates[0] });
+      assigned.set(group[0], { seq: candidates[0].seq, alreadyOnBoard: true });
+    } else {
+      const unpaired: MappedRow[] = [];
+      for (const row of group) {
+        const match = candidates.find(
+          (c) => !claimed.has(c.id) && sameDate(row.createDate, c.create_date ?? null)
+        );
+        if (match) {
+          claimed.add(match.id);
+          resolution.matched.push({ row, match });
+          assigned.set(row, { seq: match.seq, alreadyOnBoard: true });
+        } else {
+          unpaired.push(row);
+        }
+      }
+      for (const row of unpaired) {
+        const next = allocateSeq(seq, taken);
+        taken.add(next);
+        resolution.created.push({ row, seq: next });
+        assigned.set(row, { seq: next, alreadyOnBoard: false });
+      }
+    }
+
+    if (group.length > 1) {
+      resolution.duplicates.push({
+        seq,
+        rows: group.map((r) => {
+          const a = assigned.get(r);
+          return {
+            date: r.createDate,
+            status: r.status,
+            cs: r.cs ?? "",
+            content: r.content,
+            assignedSeq: a?.seq ?? seq,
+            alreadyOnBoard: a?.alreadyOnBoard ?? false,
+          };
+        }),
+      });
+    }
   }
-  // Sheet order, so the list reads the way the sheet does.
-  return out.sort((a, b) => a.seq.localeCompare(b.seq, undefined, { numeric: true }));
+
+  resolution.duplicates.sort((a, b) => a.seq.localeCompare(b.seq, undefined, { numeric: true }));
+  return resolution;
 }
 
 /** The sheet's value for a field, as a plain string. */
@@ -354,6 +397,64 @@ function fieldDiff(
   return { from, to };
 }
 
+/** Works out what an import would do, without writing anything. */
+export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
+  if (!hasServiceAccountConfig()) {
+    throw new Error(
+      "Google Sheets 服務帳戶未設定，請確認 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY / SHEET_ID 環境變數。"
+    );
+  }
+
+  const [rows, existing] = await Promise.all([readSheet(board), loadExisting(board)]);
+  const resolved = resolveRows(rows, existing);
+  const fields = syncFieldsForBoard(board);
+
+  const plan: ImportPlan = {
+    board,
+    sheetRows: rows.length,
+    newCases: [],
+    newComments: [],
+    duplicates: resolved.duplicates,
+    fieldChanges: [],
+    unchanged: 0,
+    skipped: resolved.blank,
+  };
+
+  for (const { row, seq } of resolved.created) {
+    plan.newCases.push({
+      seq,
+      sheetSeq: row.seq,
+      date: row.createDate,
+      status: row.status,
+      content: row.content,
+      who: [row.cs, row.op].filter(Boolean).join(" / "),
+      category: [row.dept, row.hoType, row.hoClass].filter(Boolean).join(" / "),
+      priority: row.priority,
+    });
+    if (row.reply) plan.newComments.push({ seq, body: row.reply });
+  }
+
+  for (const { row, match } of resolved.matched) {
+    let touched = false;
+
+    if (row.reply && !(existing.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
+      plan.newComments.push({ seq: match.seq, body: row.reply });
+      touched = true;
+    }
+
+    for (const field of fields) {
+      const diff = fieldDiff(row, match, field);
+      if (!diff) continue;
+      plan.fieldChanges.push({ seq: match.seq, field, ...diff });
+      touched = true;
+    }
+
+    if (!touched) plan.unchanged += 1;
+  }
+
+  return plan;
+}
+
 /**
  * Applies the plan. Inserts only, except for the fields the caller explicitly
  * asked to sync on cases that already exist.
@@ -373,23 +474,23 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   const available = new Set(syncFieldsForBoard(board));
   const syncFields = (options.syncFields ?? []).filter((f) => available.has(f));
 
-  const seen = new Set<string>();
-  const toInsert: MappedRow[] = [];
+  // Same pairing the dry run showed, so what runs is what was reviewed.
+  const resolved = resolveRows(rows, existingBefore);
+  const rowDateOf = (r: MappedRow) =>
+    toDateOrNull(r.updateDate) ?? toDateOrNull(r.createDate) ?? today;
+
+  const toInsert: { row: MappedRow; seq: string }[] = resolved.created;
   const replies: { seq: string; body: string; at: string }[] = [];
   const updates: FieldUpdate[] = [];
 
-  for (const row of rows) {
-    if (!row.seq || seen.has(row.seq)) continue;
-    seen.add(row.seq);
-    const rowDate = toDateOrNull(row.updateDate) ?? toDateOrNull(row.createDate) ?? today;
-    const match = existingBefore.bySeq.get(row.seq);
-    if (!match) {
-      toInsert.push(row);
-      if (row.reply) replies.push({ seq: row.seq, body: row.reply, at: sheetTimestamp(rowDate) });
-      continue;
-    }
+  for (const { row, seq } of resolved.created) {
+    if (row.reply) replies.push({ seq, body: row.reply, at: sheetTimestamp(rowDateOf(row)) });
+  }
+
+  for (const { row, match } of resolved.matched) {
+    const rowDate = rowDateOf(row);
     if (row.reply && !(existingBefore.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
-      replies.push({ seq: row.seq, body: row.reply, at: sheetTimestamp(rowDate) });
+      replies.push({ seq: match.seq, body: row.reply, at: sheetTimestamp(rowDate) });
     }
     for (const field of syncFields) {
       const diff = fieldDiff(row, match, field);
@@ -407,9 +508,9 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
 
   let casesInserted = 0;
   for (let i = 0; i < toInsert.length; i += 200) {
-    const chunk = toInsert.slice(i, i + 200).map((r) => ({
+    const chunk = toInsert.slice(i, i + 200).map(({ row: r, seq }) => ({
       board,
-      seq: r.seq,
+      seq,
       create_date: toDateOrNull(r.createDate) ?? today,
       update_date: toDateOrNull(r.updateDate) ?? toDateOrNull(r.createDate) ?? today,
       dept: r.dept,
@@ -431,11 +532,17 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
     casesInserted += (data ?? []).length;
   }
 
-  // Re-read so replies can attach to the cases just inserted.
-  const { bySeq } = await loadExisting(board);
+  // Re-read so replies can attach to the cases just inserted. Keyed on the
+  // exact number each reply was filed under, suffix included — the base would
+  // pick the wrong one of a reused number's several cases.
+  const after = await loadExisting(board);
+  const byExactSeq = new Map<string, ExistingCase>();
+  for (const list of after.byBase.values()) {
+    for (const c of list) byExactSeq.set((c.seq ?? "").trim(), c);
+  }
   const commentRows = replies
     .map((r) => {
-      const target = bySeq.get(r.seq);
+      const target = byExactSeq.get(r.seq);
       return target ? { case_id: target.id, author_id: authorId, body: r.body, created_at: r.at } : null;
     })
     .filter((r): r is { case_id: string; author_id: string; body: string; created_at: string } => r !== null);
