@@ -11,7 +11,13 @@ import {
 } from "@/lib/permissions";
 import type { AdminUserRow, RoleRow } from "@/lib/permissionsServer";
 import type { ArchiveStatus } from "@/lib/archive";
-import { SYNC_FIELDS, SYNC_FIELD_KEYS, type ImportPlan, type SyncField } from "@/lib/sheetImportShared";
+import {
+  SYNC_FIELDS,
+  SYNC_FIELD_KEYS,
+  type ImportPlan,
+  type ReplySplitPreview,
+  type SyncField,
+} from "@/lib/sheetImportShared";
 import { STATUS_LIST_KEY, type StatusRuleRow } from "@/lib/statusRulesShared";
 
 type Lang = "zh" | "en";
@@ -46,6 +52,32 @@ const STRINGS = {
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
   importDupCount: { zh: "序列重複", en: "Reused IDs" },
+
+  splitTitle: { zh: "留言拆分試算", en: "Comment split — dry run" },
+  splitIntro: {
+    zh: "T1 HO 的「回答內容」是一格一直往下追加的，現在整格當成一則留言，所以每次匯入只要那格長過，就會多一則包含前面全部內容的留言。這裡試算如果改成按時間拆成一則一則會變怎樣 —— 只是試算，不會寫入任何東西。",
+    en: "T1 HO's reply column is one cell people append to, and the import treats the whole cell as a single comment — so every run where it has grown adds another copy of everything before. This shows what splitting it by time would produce. Nothing is written.",
+  },
+  splitRule: {
+    zh: "拆分規則刻意保守：只在「一行以時間開頭」的地方切。時間出現在句子中間、名字排在時間前面、或整格根本沒有時間的，一律不拆，維持現在的樣子。漏拆只是跟今天一樣，拆錯會把人家的句子切成兩半。",
+    en: "The rule is deliberately narrow: split only where a line begins with a time. A time mid-sentence, a name before the time, or no time at all leaves the text as it is. A missed split is just today's behaviour; a wrong one cuts somebody's sentence in half.",
+  },
+  splitRun: { zh: "試算", en: "Run" },
+  splitCells: { zh: "有回覆的資料列", en: "Rows with replies" },
+  splitWillSplit: { zh: "會被拆開的", en: "Cells that split" },
+  splitEntries: { zh: "拆完的留言數", en: "Comments produced" },
+  splitUnsplit: { zh: "維持一則", en: "Left whole" },
+  splitWithTime: { zh: "有真實時間的", en: "With a real time" },
+  splitAmbiguous: { zh: "可能漏拆", en: "Possible misses" },
+  splitSamples: { zh: "拆分結果抽樣", en: "How they split" },
+  splitAmbiguousTitle: { zh: "可能漏拆的（要你判斷）", en: "Possible misses — your call" },
+  splitAmbiguousHint: {
+    zh: "這些行裡有時間，但不在行首（例如「SAM 12:43 >…」名字排在前面）。目前不會在這裡切開，整段會併到上一則。要不要連這種也拆，看你覺得這樣算不算同一段。",
+    en: "These lines carry a time that isn't at the start — a name comes first, as in \u201cSAM 12:43 >…\u201d. They aren't split on, so the text joins the entry above. Whether that's right is a judgement call.",
+  },
+  splitNoTime: { zh: "無時間", en: "no time" },
+  splitBefore: { zh: "現在（一整格 = 一則留言）", en: "Today (whole cell = one comment)" },
+  splitAfter: { zh: "拆完", en: "After splitting" },
   importDupTitle: { zh: "序列重複、還沒補進來的", en: "Reused numbers still to bring in" },
   importDupAllDone: {
     zh: (n: number) =>
@@ -431,6 +463,15 @@ export default function AdminPanel({
 
   function toggleSyncField(field: SyncField, on: boolean) {
     setSyncFields((prev) => (on ? [...prev, field] : prev.filter((f) => f !== field)));
+  }
+
+  // --- 留言拆分試算 ---
+  const [split, setSplit] = useState<ReplySplitPreview | null>(null);
+
+  async function previewSplit() {
+    setSplit(null);
+    const data = await call("/api/admin/reply-split", "GET");
+    if (data) setSplit(data as unknown as ReplySplitPreview);
   }
 
   async function previewImport() {
@@ -1066,6 +1107,104 @@ export default function AdminPanel({
                     {plan.fieldChanges.length > 50 && (
                       <p className="hint">{t(lang, "importDiffMore", plan.fieldChanges.length - 50)}</p>
                     )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h2>{t(lang, "splitTitle")}</h2>
+            </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {t(lang, "splitIntro")}
+            </p>
+            <p className="hint">{t(lang, "splitRule")}</p>
+
+            <div className="field-row">
+              <button type="button" className="ghost" disabled={busy} onClick={previewSplit}>
+                {busy ? t(lang, "saving") : t(lang, "splitRun")}
+              </button>
+            </div>
+
+            {split && (
+              <>
+                <div className="archive-stat-row">
+                  <div className="archive-stat">
+                    <div className="n">{split.cellsWithReplies.toLocaleString()}</div>
+                    <div className="l">{t(lang, "splitCells")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{split.cellsSplit.toLocaleString()}</div>
+                    <div className="l">{t(lang, "splitWillSplit")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{split.entriesProduced.toLocaleString()}</div>
+                    <div className="l">{t(lang, "splitEntries")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{split.cellsUnsplit.toLocaleString()}</div>
+                    <div className="l">{t(lang, "splitUnsplit")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{split.entriesWithTime.toLocaleString()}</div>
+                    <div className="l">{t(lang, "splitWithTime")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{split.cellsAmbiguous.toLocaleString()}</div>
+                    <div className="l">{t(lang, "splitAmbiguous")}</div>
+                  </div>
+                </div>
+
+                {split.samples.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
+                      {t(lang, "splitSamples")}
+                    </p>
+                    {split.samples.map((sm) => (
+                      <div key={`s-${sm.seq}-${sm.date}`} className="split-sample">
+                        <div className="split-seq">
+                          {sm.seq} · {sm.date}
+                        </div>
+                        <div className="split-cols">
+                          <div>
+                            <div className="split-label">{t(lang, "splitBefore")}</div>
+                            <pre className="split-cell">{sm.cell}</pre>
+                          </div>
+                          <div>
+                            <div className="split-label">
+                              {t(lang, "splitAfter")} — {sm.entries.length}
+                            </div>
+                            {sm.entries.map((e, i) => (
+                              <div key={i} className="split-entry">
+                                <span className="split-at">{e.at ? e.at.slice(0, 16).replace("T", " ") : t(lang, "splitNoTime")}</span>
+                                <pre className="split-cell">{e.body}</pre>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {split.ambiguousSamples.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 24, fontWeight: 650 }}>
+                      {t(lang, "splitAmbiguousTitle")}
+                    </p>
+                    <p className="hint">{t(lang, "splitAmbiguousHint")}</p>
+                    {split.ambiguousSamples.map((sm) => (
+                      <div key={`a-${sm.seq}-${sm.date}`} className="split-sample">
+                        <div className="split-seq">
+                          {sm.seq} · {sm.date}
+                        </div>
+                        {sm.ambiguous.map((line, i) => (
+                          <pre key={i} className="split-cell warn">{line}</pre>
+                        ))}
+                      </div>
+                    ))}
                   </>
                 )}
               </>

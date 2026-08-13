@@ -7,12 +7,15 @@ import { resolveSupabaseUserId } from "./supabaseUsers";
 import { SHEET_IMPORT_EMAIL } from "./systemAccounts";
 import type { SupaBoard } from "./supabaseCases";
 import { SYNC_FIELDS, SYNC_FIELD_KEYS, syncFieldsForBoard } from "./sheetImportShared";
+import { splitReply } from "./replySplit";
 import type {
   ImportOptions,
   ImportPlan,
   ImportPlanCase,
   ImportPlanDuplicate,
   ImportResult,
+  ReplySplitPreview,
+  ReplySplitSample,
   SyncField,
 } from "./sheetImportShared";
 
@@ -679,4 +682,55 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
     }
   }
   return updated;
+}
+
+/**
+ * What splitting the T1 HO reply cells would produce, without writing any of
+ * it. Only the counts and a sample matter here: the rule is narrow on purpose,
+ * so the question to answer from this is not "does it work" but "where does it
+ * decline to split, and is that the right call".
+ */
+export async function previewReplySplit(): Promise<ReplySplitPreview> {
+  if (!hasServiceAccountConfig()) {
+    throw new Error("Google Sheets 服務帳戶未設定。");
+  }
+
+  const rows = await readSheet("t1ho");
+  const preview: ReplySplitPreview = {
+    cellsWithReplies: 0,
+    cellsSplit: 0,
+    entriesProduced: 0,
+    cellsUnsplit: 0,
+    entriesWithTime: 0,
+    cellsAmbiguous: 0,
+    samples: [],
+    ambiguousSamples: [],
+  };
+
+  for (const row of rows) {
+    if (!row.reply.trim()) continue;
+    preview.cellsWithReplies += 1;
+
+    const { entries, ambiguous } = splitReply(row.reply, toDateOrNull(row.createDate) ?? row.createDate);
+    preview.entriesProduced += entries.length;
+    preview.entriesWithTime += entries.filter((e) => e.at !== null).length;
+    if (entries.length > 1) preview.cellsSplit += 1;
+    else preview.cellsUnsplit += 1;
+
+    const sample: ReplySplitSample = {
+      seq: row.seq,
+      date: row.createDate,
+      cell: row.reply,
+      entries,
+      ambiguous,
+    };
+    if (ambiguous.length > 0) {
+      preview.cellsAmbiguous += 1;
+      // Every flagged cell is a judgement call, so keep a generous sample.
+      if (preview.ambiguousSamples.length < 40) preview.ambiguousSamples.push(sample);
+    }
+    if (entries.length > 1 && preview.samples.length < 40) preview.samples.push(sample);
+  }
+
+  return preview;
 }

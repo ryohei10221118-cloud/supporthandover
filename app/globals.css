@@ -2979,6 +2979,60 @@ select.threshold:focus {
   font-weight: 700;
 }
 
+/* Reply-split dry run: the cell as it is now beside what it would become,
+   so the two can be read against each other rather than in turn. */
+.split-sample {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  background: var(--bg);
+}
+
+.split-seq {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.split-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.split-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.split-cell {
+  font-family: inherit;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.split-cell.warn {
+  color: var(--overdue);
+}
+
+.split-entry {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  margin-bottom: 8px;
+}
+
+.split-at {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* The number differs from what the sheet says, so it's worth spotting. */
 .dup-renumbered {
   color: var(--accent);

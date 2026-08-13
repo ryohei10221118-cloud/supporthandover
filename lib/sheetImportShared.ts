@@ -132,3 +132,32 @@ export interface ImportOptions {
   /** Which fields to take from the sheet on cases that already exist. */
   syncFields?: SyncField[];
 }
+
+// --- Reply splitting (dry run only, nothing writes this yet) --------------
+
+export interface ReplySplitSample {
+  seq: string;
+  date: string;
+  cell: string;
+  entries: { body: string; at: string | null; marker: string | null }[];
+  ambiguous: string[];
+}
+
+export interface ReplySplitPreview {
+  /** Rows carrying any reply text at all. */
+  cellsWithReplies: number;
+  /** Cells the rule would break into more than one comment. */
+  cellsSplit: number;
+  /** Comments those cells would become, against 1 each today. */
+  entriesProduced: number;
+  /** Cells left whole because no line opened with a time. */
+  cellsUnsplit: number;
+  /** Of the entries produced, how many carry a real time from the sheet. */
+  entriesWithTime: number;
+  /** Cells with a time that isn't at the start of its line — possible misses. */
+  cellsAmbiguous: number;
+  /** Cells that would split, for checking the rule against real text. */
+  samples: ReplySplitSample[];
+  /** Cells flagged ambiguous, which is where a wrong call would show up. */
+  ambiguousSamples: ReplySplitSample[];
+}
