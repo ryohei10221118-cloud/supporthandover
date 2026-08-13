@@ -69,6 +69,18 @@ const STRINGS = {
   splitUnsplit: { zh: "維持一則", en: "Left whole" },
   splitWithTime: { zh: "有真實時間的", en: "With a real time" },
   splitAmbiguous: { zh: "可能漏拆", en: "Possible misses" },
+  splitByYear: { zh: "有回覆的資料列，按年份", en: "Rows with replies, by year" },
+  splitByYearHint: {
+    zh: "下面的抽樣是照 Sheet 順序取的，而 Sheet 按時間排，所以看到的一定是最舊的那幾筆 —— 分佈要看這張表，不能看抽樣。",
+    en: "The samples below come out in sheet order, which is chronological, so they are always the oldest rows. Read the distribution here, not from the samples.",
+  },
+  splitColYear: { zh: "年份", en: "Year" },
+  splitColCells: { zh: "有回覆的資料列", en: "Rows with replies" },
+  splitColSplit: { zh: "其中會被拆開的", en: "…that would split" },
+  splitRecent: {
+    zh: (d: string) => `${d} 之後`,
+    en: (d: string) => `On or after ${d}`,
+  },
   splitSamples: { zh: "拆分結果抽樣", en: "How they split" },
   splitAmbiguousTitle: { zh: "可能漏拆的（要你判斷）", en: "Possible misses — your call" },
   splitAmbiguousHint: {
@@ -1156,6 +1168,40 @@ export default function AdminPanel({
                     <div className="l">{t(lang, "splitAmbiguous")}</div>
                   </div>
                 </div>
+
+                {split.byYear.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
+                      {t(lang, "splitByYear")}
+                    </p>
+                    <p className="hint">{t(lang, "splitByYearHint")}</p>
+                    <div className="table-scroll" style={{ marginTop: 8 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>{t(lang, "splitColYear")}</th>
+                            <th>{t(lang, "splitColCells")}</th>
+                            <th>{t(lang, "splitColSplit")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {split.byYear.map((y) => (
+                            <tr key={y.year}>
+                              <td>{y.year}</td>
+                              <td className="muted">{y.cells.toLocaleString()}</td>
+                              <td className="muted">{y.split.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                          <tr>
+                            <td style={{ fontWeight: 700 }}>{t(lang, "splitRecent", split.recentFrom)}</td>
+                            <td style={{ fontWeight: 700 }}>{split.recentCells.toLocaleString()}</td>
+                            <td style={{ fontWeight: 700 }}>{split.recentSplit.toLocaleString()}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
 
                 {split.samples.length > 0 && (
                   <>

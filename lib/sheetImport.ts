@@ -690,13 +690,18 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
  * so the question to answer from this is not "does it work" but "where does it
  * decline to split, and is that the right call".
  */
-export async function previewReplySplit(): Promise<ReplySplitPreview> {
+export async function previewReplySplit(recentFrom = "2026-08-10"): Promise<ReplySplitPreview> {
   if (!hasServiceAccountConfig()) {
     throw new Error("Google Sheets 服務帳戶未設定。");
   }
 
   const rows = await readSheet("t1ho");
+  const years = new Map<string, { cells: number; split: number }>();
   const preview: ReplySplitPreview = {
+    byYear: [],
+    recentCells: 0,
+    recentSplit: 0,
+    recentFrom,
     cellsWithReplies: 0,
     cellsSplit: 0,
     entriesProduced: 0,
@@ -714,8 +719,21 @@ export async function previewReplySplit(): Promise<ReplySplitPreview> {
     const { entries, ambiguous } = splitReply(row.reply, toDateOrNull(row.createDate) ?? row.createDate);
     preview.entriesProduced += entries.length;
     preview.entriesWithTime += entries.filter((e) => e.at !== null).length;
-    if (entries.length > 1) preview.cellsSplit += 1;
+    const willSplit = entries.length > 1;
+    if (willSplit) preview.cellsSplit += 1;
     else preview.cellsUnsplit += 1;
+
+    const rowDate = toDateOrNull(row.createDate);
+    const year = rowDate ? rowDate.slice(0, 4) : "—";
+    const bucket = years.get(year) ?? { cells: 0, split: 0 };
+    bucket.cells += 1;
+    if (willSplit) bucket.split += 1;
+    years.set(year, bucket);
+
+    if (rowDate && rowDate >= recentFrom) {
+      preview.recentCells += 1;
+      if (willSplit) preview.recentSplit += 1;
+    }
 
     const sample: ReplySplitSample = {
       seq: row.seq,
@@ -731,6 +749,10 @@ export async function previewReplySplit(): Promise<ReplySplitPreview> {
     }
     if (entries.length > 1 && preview.samples.length < 40) preview.samples.push(sample);
   }
+
+  preview.byYear = [...years.entries()]
+    .map(([year, b]) => ({ year, ...b }))
+    .sort((a, b) => a.year.localeCompare(b.year));
 
   return preview;
 }

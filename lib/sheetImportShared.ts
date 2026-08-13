@@ -160,4 +160,16 @@ export interface ReplySplitPreview {
   samples: ReplySplitSample[];
   /** Cells flagged ambiguous, which is where a wrong call would show up. */
   ambiguousSamples: ReplySplitSample[];
+  /**
+   * Cells with replies by the year of their row, and how many of those would
+   * split. Samples come out in sheet order, which is chronological — so they
+   * show the oldest rows rather than a fair draw, and only counts can answer
+   * how much of this is live work versus archive.
+   */
+  byYear: { year: string; cells: number; split: number }[];
+  /** Cells whose row is dated on or after `recentFrom`. */
+  recentCells: number;
+  /** Of those, how many would split. */
+  recentSplit: number;
+  recentFrom: string;
 }
