@@ -173,9 +173,23 @@ async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
 /** An existing row, carrying every column the sheet could disagree with. */
 type ExistingCase = { id: string; seq: string } & Record<string, string | null>;
 
+/**
+ * What has to come back for every existing case.
+ *
+ * create_date is listed here in its own right, not through the sync fields —
+ * it is deliberately absent from those (a case is filed under its date, so
+ * the sheet never overwrites it), but the resolver pairs rows on it, and
+ * leaving it out silently made every date comparison fail: nothing matched,
+ * and every sheet row looked like a case the board had never seen.
+ */
+const RESOLVER_COLUMNS = ["id", "seq", "create_date"] as const;
+
 // The seq map keeps deleted cases too: their number is still taken, and
 // re-creating one the sheet still lists would undo the deletion silently.
-const EXISTING_COLUMNS = ["id", "seq", ...SYNC_FIELD_KEYS.map((k) => SYNC_FIELDS[k].column)].join(", ");
+const EXISTING_COLUMNS = [
+  ...RESOLVER_COLUMNS,
+  ...SYNC_FIELD_KEYS.map((k) => SYNC_FIELDS[k].column),
+].join(", ");
 
 interface ExistingIndex {
   /** Existing cases grouped by their number with any -N suffix removed, so a
@@ -204,6 +218,17 @@ async function loadExisting(board: SupaBoard): Promise<ExistingIndex> {
     const page = data ?? [];
     cases.push(...page);
     if (page.length < PAGE) break;
+  }
+
+  // A column that wasn't selected comes back undefined rather than erroring,
+  // and the resolver would just quietly stop matching on it. Cheaper to find
+  // out here than from a preview offering to re-create the whole board.
+  if (cases.length > 0) {
+    for (const column of RESOLVER_COLUMNS) {
+      if (!(column in cases[0])) {
+        throw new Error(`讀取 cases 少了 ${column} 欄位，比對會失準，已中止。`);
+      }
+    }
   }
 
   const byBase = new Map<string, ExistingCase[]>();
