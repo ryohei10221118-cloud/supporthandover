@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { prettyDisplayName } from "@/lib/auth";
 import { CASES_TAG } from "@/lib/cacheTags";
+import { nextSeqFor } from "@/lib/nextSeq";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -64,23 +65,7 @@ export async function POST(req: Request) {
     const supabase = getSupabaseClient();
 
     // Case numbers continue the board's own sequence (TH#### / HO####).
-    const { data: lastRows, error: seqError } = await supabase
-      .from("cases")
-      .select("seq")
-      .eq("board", board)
-      .order("created_at", { ascending: false })
-      .limit(200)
-      .returns<{ seq: string }[]>();
-    if (seqError) throw new Error(seqError.message);
-
-    const prefix = board === "t1ho" ? "TH" : "HO";
-    let maxSeq = 0;
-    for (const row of lastRows ?? []) {
-      const n = parseInt((row.seq ?? "").replace(/\D+/g, ""), 10);
-      if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
-    }
-    const nextSeq =
-      board === "t1ho" ? `${prefix}${maxSeq + 1}` : `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
+    const nextSeq = await nextSeqFor(board);
 
     // cases.created_by is NOT NULL and FKs to public.users, so the author
     // has to exist there before the insert (auto-provisioned on first write).

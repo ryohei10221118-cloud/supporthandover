@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { CASES_TAG } from "@/lib/cacheTags";
+import { nextSeqFor } from "@/lib/nextSeq";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 import { prettyDisplayName } from "@/lib/auth";
@@ -67,20 +68,7 @@ export async function POST(req: Request) {
     }
 
     // Continue the HO board's own numbering.
-    const { data: lastRows, error: seqError } = await supabase
-      .from("cases")
-      .select("seq")
-      .eq("board", "ho")
-      .order("created_at", { ascending: false })
-      .limit(200)
-      .returns<{ seq: string }[]>();
-    if (seqError) throw new Error(seqError.message);
-    let maxSeq = 0;
-    for (const row of lastRows ?? []) {
-      const n = parseInt((row.seq ?? "").replace(/\D+/g, ""), 10);
-      if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
-    }
-    const nextSeq = `HO${String(maxSeq + 1).padStart(4, "0")}`;
+    const nextSeq = await nextSeqFor("ho");
 
     const movedBy = await resolveSupabaseUserId(role.email);
     const today = new Date().toISOString().slice(0, 10);
