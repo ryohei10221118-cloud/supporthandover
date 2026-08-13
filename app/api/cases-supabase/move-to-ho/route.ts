@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { CASES_TAG } from "@/lib/cacheTags";
-import { nextSeqFor } from "@/lib/nextSeq";
+import { insertWithNextSeq } from "@/lib/nextSeq";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 import { prettyDisplayName } from "@/lib/auth";
@@ -67,17 +67,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "這筆案件已經轉移過了" }, { status: 409 });
     }
 
-    // Continue the HO board's own numbering.
-    const nextSeq = await nextSeqFor("ho");
-
     const movedBy = await resolveSupabaseUserId(role.email);
     const today = new Date().toISOString().slice(0, 10);
 
-    const { data: created, error: insertError } = await supabase
-      .from("cases")
-      .insert({
+    // Continues the HO board's own numbering, retrying if the number is
+    // claimed between reading it and inserting.
+    const created = await insertWithNextSeq<{ id: string; seq: string }>(
+      "ho",
+      (seq) => ({
         board: "ho",
-        seq: nextSeq,
+        seq,
         create_date: today,
         update_date: today,
         ho_type: hoType,
@@ -92,11 +91,9 @@ export async function POST(req: Request) {
         issue_tag: source.issue_tag,
         archived: false,
         created_by: movedBy,
-      })
-      .select("id, seq")
-      .maybeSingle<{ id: string; seq: string }>();
-    if (insertError) throw new Error(insertError.message);
-    if (!created) throw new Error("建立 HO 案件失敗");
+      }),
+      "id, seq"
+    );
 
     // Claim the link before anything else can. The unique index means a
     // second request racing this one fails here rather than creating a

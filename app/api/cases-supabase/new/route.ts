@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { prettyDisplayName } from "@/lib/auth";
 import { CASES_TAG } from "@/lib/cacheTags";
-import { nextSeqFor } from "@/lib/nextSeq";
+import { insertWithNextSeq } from "@/lib/nextSeq";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -64,18 +64,17 @@ export async function POST(req: Request) {
   try {
     const supabase = getSupabaseClient();
 
-    // Case numbers continue the board's own sequence (TH#### / HO####).
-    const nextSeq = await nextSeqFor(board);
-
     // cases.created_by is NOT NULL and FKs to public.users, so the author
     // has to exist there before the insert (auto-provisioned on first write).
     const createdBy = await resolveSupabaseUserId(role.email);
 
-    const { data: created, error: insertError } = await supabase
-      .from("cases")
-      .insert({
+    // Case numbers continue the board's own sequence (TH#### / HO####), and
+    // the insert retries if someone claims the number first.
+    const created = await insertWithNextSeq<{ id: string; seq: string }>(
+      board,
+      (seq) => ({
         board,
-        seq: nextSeq,
+        seq,
         create_date: today,
         update_date: today,
         dept: board === "t1ho" ? dept || null : null,
@@ -85,15 +84,13 @@ export async function POST(req: Request) {
         cs,
         content,
         related_ticket_label: board === "ho" ? ticket || null : null,
-        status: status || (board === "t1ho" ? "Follow up" : "Follow up"),
+        status: status || "Follow up",
         priority: "",
         archived: false,
         created_by: createdBy,
-      })
-      .select("id, seq")
-      .maybeSingle<{ id: string; seq: string }>();
-    if (insertError) throw new Error(insertError.message);
-    if (!created) throw new Error("建立案件失敗");
+      }),
+      "id, seq"
+    );
 
     // Screenshots. Oversize files never reach here as data — the client sends
     // just the link the user pasted instead.

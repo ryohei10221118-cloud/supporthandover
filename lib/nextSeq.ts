@@ -53,7 +53,55 @@ export async function nextSeqFor(board: SupaBoard): Promise<string> {
     if (page.length < PAGE) break;
   }
 
-  const next = maxSeq + 1;
-  // T1 HO's ids run unpadded (TH2646); HO's are padded to four (HO0567).
-  return board === "t1ho" ? `TH${next}` : `HO${String(next).padStart(4, "0")}`;
+  return formatSeq(board, maxSeq + 1);
+}
+
+/** T1 HO's ids run unpadded (TH2646); HO's are padded to four (HO0567). */
+function formatSeq(board: SupaBoard, n: number): string {
+  return board === "t1ho" ? `TH${n}` : `HO${String(n).padStart(4, "0")}`;
+}
+
+/** Postgres unique_violation — the (board, seq) index rejecting a repeat. */
+const UNIQUE_VIOLATION = "23505";
+
+export function isDuplicateSeqError(err: { code?: string } | null): boolean {
+  return err?.code === UNIQUE_VIOLATION;
+}
+
+/**
+ * Creates a case, working around the gap between reading the highest number
+ * and inserting with it.
+ *
+ * Two people pressing 新增案件 in the same moment both read the same maximum
+ * and both try to claim it. Before the (board, seq) unique index existed, the
+ * loser silently got a duplicate number; now the database rejects it, which
+ * is right but would surface to whoever came second as a raw error on a
+ * perfectly reasonable action. So a rejection is treated as "somebody took
+ * that number" and the next one is tried.
+ *
+ * The retries are bounded: past a handful of simultaneous creations something
+ * other than contention is wrong, and looping would only hide it.
+ */
+export async function insertWithNextSeq<T>(
+  board: SupaBoard,
+  build: (seq: string) => Record<string, unknown>,
+  select: string
+): Promise<T> {
+  const supabase = getSupabaseClient();
+  let seq = await nextSeqFor(board);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase
+      .from("cases")
+      .insert(build(seq))
+      .select(select)
+      .maybeSingle<T>();
+    if (!error && data) return data;
+    if (!isDuplicateSeqError(error)) {
+      throw new Error(error?.message ?? "建立案件失敗");
+    }
+    const n = seqNumber(seq);
+    seq = formatSeq(board, (n ?? 0) + 1);
+  }
+  throw new Error("案件編號同時被多人取用，請再試一次");
 }
