@@ -319,6 +319,11 @@ async function importAuthorIdIfPresent(): Promise<string | null> {
  * anywhere, but these replies are built from stock phrases ("已回复OP。感謝
  * 耐心等候，經相關團隊確認："), so two genuinely different ones score high
  * against each other, and merging them would destroy one.
+ *
+ * An emptied cell is the one edit deliberately not followed. The import has
+ * no delete anywhere in it, and a hand-edited sheet produces accidental
+ * clears — a row selected and blanked, a paste landing in the wrong column.
+ * Following those would destroy a thread with no way back.
  */
 function replyRelation(
   cell: string,
@@ -332,11 +337,21 @@ function replyRelation(
   // Longest first: where a case has several, the one that shares the most
   // with the new text is the one being continued.
   const candidates = existing
-    .filter((c) => c.mine && c.body.length > 0 && next.length > c.body.length)
+    .filter((c) => c.mine && c.body.length > 0 && c.body !== next)
     .sort((a, b) => b.body.length - a.body.length);
 
   for (const c of candidates) {
-    if (commonPrefixLength(c.body, next) >= c.body.length * 0.8) {
+    const shared = commonPrefixLength(c.body, next);
+    // Added to: the whole of what we hold is still at the front of the cell.
+    if (next.length > c.body.length && shared >= c.body.length * 0.8) {
+      return { kind: "extends", comment: c };
+    }
+    // Cut back: the cell is exactly the front of what we hold, so something
+    // was deleted off the end. Without this the shortened text looks like a
+    // brand new reply and gets added *alongside* the old one — an edit in the
+    // sheet turning into a duplicate here, which is worse than not tracking
+    // the edit at all.
+    if (next.length < c.body.length && shared === next.length) {
       return { kind: "extends", comment: c };
     }
   }

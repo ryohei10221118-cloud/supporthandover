@@ -1692,8 +1692,8 @@ export default function SupaBoard({
     );
   }
 
-  async function load(nextScope: BoardScope) {
-    setLoading(true);
+  async function load(nextScope: BoardScope, quiet = false) {
+    if (!quiet) setLoading(true);
     try {
       const res = await fetch(`/api/cases-supabase?board=${board}&scope=${nextScope}`, { cache: "no-store" });
       const data = await res.json();
@@ -1702,7 +1702,7 @@ export default function SupaBoard({
       if (typeof data.totalCount === "number") setTotalCount(data.totalCount);
       if (data.scope === "recent" || data.scope === "all") setScope(data.scope);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }
 
@@ -1710,6 +1710,42 @@ export default function SupaBoard({
   // 載入全部 doesn't silently drop back to the recent window.
   const refresh = () => load(scope);
   const notLoaded = Math.max(totalCount - cases.length, 0);
+
+  /**
+   * Picks up changes made elsewhere — a reply typed into the sheet, a
+   * colleague commenting here — without anyone having to reload.
+   *
+   * Quietly: no skeleton, no scroll jump, and it keeps whatever scope is
+   * loaded, so a background refresh can't undo 載入全部. Held off while a
+   * write of our own is in flight, since the server may not have it yet and
+   * the answer would arrive looking like the edit had been undone.
+   *
+   * Only while the tab is actually being looked at, and immediately on
+   * returning to it — which is the moment somebody coming back from Telegram
+   * most wants it to be current.
+   */
+  const busy =
+    !!fieldSaving || commentSubmitting || editSubmitting || deleteSubmitting || moveSubmitting || loading;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible" || busyRef.current) return;
+      void load(scopeRef.current, true);
+    };
+    const timer = setInterval(tick, 60_000);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", tick);
+    };
+    // load closes over nothing that changes between renders in a way that
+    // matters here; the scope it needs is read from a ref at call time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="board-root">
