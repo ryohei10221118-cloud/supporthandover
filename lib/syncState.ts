@@ -12,7 +12,15 @@ import type { SupaBoard } from "./supabaseCases";
  */
 export interface SyncState {
   board: SupaBoard;
-  /** Drive's modifiedTime as of the last completed run. */
+  /**
+   * Drive's modifiedTime as of the last completed run, kept verbatim.
+   *
+   * Stored as text, not a timestamp. Nothing here does date arithmetic on it —
+   * the only question ever asked is whether it is the same string Drive gave
+   * last time. Storing it as timestamptz meant Postgres reformatted it on the
+   * way back out ("...T01:32:19.176Z" became "...T01:32:19+00:00"), so the
+   * comparison never matched and the check never once skipped a run.
+   */
   sheetModifiedAt: string | null;
   lastRunAt: string | null;
 }
