@@ -13,6 +13,7 @@ import type {
   ImportPlan,
   ImportPlanCase,
   ImportPlanDuplicate,
+  ImportPlanCommentUpdate,
   ImportResult,
   ReplySplitPreview,
   ReplySplitSample,
@@ -201,7 +202,17 @@ interface ExistingIndex {
   byBase: Map<string, ExistingCase[]>;
   /** Every number in use, suffixed ones included — what a new row must avoid. */
   taken: Set<string>;
-  bodiesByCase: Map<string, Set<string>>;
+  commentsByCase: Map<string, ExistingComment[]>;
+}
+
+interface ExistingComment {
+  id: string;
+  /** Normalised for comparison — the legacy prefix stripped, whitespace as
+   *  the board displays it. */
+  body: string;
+  /** Whether the Sheet import wrote it. Only its own comments are ever
+   *  rewritten; anything a person typed here is left alone. */
+  mine: boolean;
 }
 
 async function loadExisting(board: SupaBoard): Promise<ExistingIndex> {
@@ -248,29 +259,98 @@ async function loadExisting(board: SupaBoard): Promise<ExistingIndex> {
     list.sort((a, b) => (a.seq ?? "").localeCompare(b.seq ?? ""));
   }
 
+  const importAuthorId = await importAuthorIdIfPresent();
   const caseIds = new Set(cases.map((c) => c.id));
-  const bodiesByCase = new Map<string, Set<string>>();
+  const commentsByCase = new Map<string, ExistingComment[]>();
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("comments")
-      .select("case_id, body")
+      .select("id, case_id, author_id, body")
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1)
-      .returns<{ case_id: string; body: string }[]>();
+      .returns<{ id: string; case_id: string; author_id: string; body: string }[]>();
     if (error) throw new Error(`讀取 comments 失敗: ${error.message}`);
     const page = data ?? [];
     for (const row of page) {
       if (!caseIds.has(row.case_id)) continue;
-      const set = bodiesByCase.get(row.case_id) ?? new Set<string>();
+      const list = commentsByCase.get(row.case_id) ?? [];
       // Migrated comments carry a prefix the board strips on display; compare
       // on the same basis or every one of them looks new.
-      set.add(normalise(row.body.replace(LEGACY_PREFIX, "")));
-      bodiesByCase.set(row.case_id, set);
+      list.push({
+        id: row.id,
+        body: normalise(row.body.replace(LEGACY_PREFIX, "")),
+        mine: !!importAuthorId && row.author_id === importAuthorId,
+      });
+      commentsByCase.set(row.case_id, list);
     }
     if (page.length < PAGE) break;
   }
 
-  return { byBase, taken, bodiesByCase };
+  return { byBase, taken, commentsByCase };
+}
+
+/**
+ * The Sheet import's own user id, or null if it has never written anything.
+ *
+ * Looked up rather than provisioned: a dry run must not create a user row as
+ * a side effect of being asked what an import would do.
+ */
+async function importAuthorIdIfPresent(): Promise<string | null> {
+  const { data } = await getSupabaseClient()
+    .from("users")
+    .select("id")
+    .eq("email", SHEET_IMPORT_EMAIL)
+    .maybeSingle<{ id: string }>();
+  return data?.id ?? null;
+}
+
+/**
+ * How the sheet's reply cell relates to a comment already on the case.
+ *
+ * The cell is one box people append to, so an import that finds it longer is
+ * almost always looking at the same reply with more on the end — not a new
+ * one. Adding a comment each time is what stacks up copies of everything
+ * already said.
+ *
+ * "Extended" means the two share an opening at least 80% as long as the
+ * existing comment. The slack covers someone going back to fix a word near
+ * the end of what's already written; an edit closer to the start breaks the
+ * shared opening and comes through as a second comment, which is exactly the
+ * behaviour before this existed — a duplicate, not a loss.
+ *
+ * That brittleness is the point. Overall similarity would tolerate edits
+ * anywhere, but these replies are built from stock phrases ("已回复OP。感謝
+ * 耐心等候，經相關團隊確認："), so two genuinely different ones score high
+ * against each other, and merging them would destroy one.
+ */
+function replyRelation(
+  cell: string,
+  existing: ExistingComment[]
+): { kind: "same" } | { kind: "extends"; comment: ExistingComment } | { kind: "new" } {
+  const next = normalise(cell);
+  if (!next) return { kind: "same" };
+
+  if (existing.some((c) => c.body === next)) return { kind: "same" };
+
+  // Longest first: where a case has several, the one that shares the most
+  // with the new text is the one being continued.
+  const candidates = existing
+    .filter((c) => c.mine && c.body.length > 0 && next.length > c.body.length)
+    .sort((a, b) => b.body.length - a.body.length);
+
+  for (const c of candidates) {
+    if (commonPrefixLength(c.body, next) >= c.body.length * 0.8) {
+      return { kind: "extends", comment: c };
+    }
+  }
+  return { kind: "new" };
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < max && a[i] === b[i]) i++;
+  return i;
 }
 
 /**
@@ -455,7 +535,10 @@ function fieldDiff(
 }
 
 /** Works out what an import would do, without writing anything. */
-export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
+export async function planSheetImport(
+  board: SupaBoard,
+  options: ImportOptions = {}
+): Promise<ImportPlan> {
   if (!hasServiceAccountConfig()) {
     throw new Error(
       "Google Sheets 服務帳戶未設定，請確認 GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY / SHEET_ID 環境變數。"
@@ -471,6 +554,8 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
     sheetRows: rows.length,
     newCases: [],
     newComments: [],
+    updatedComments: [],
+    tooOldToCreate: 0,
     duplicates: resolved.duplicates,
     fieldChanges: [],
     unchanged: 0,
@@ -478,6 +563,10 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
   };
 
   for (const { row, seq } of resolved.created) {
+    if (!mayCreate(row, options.createFrom)) {
+      plan.tooOldToCreate += 1;
+      continue;
+    }
     plan.newCases.push({
       seq,
       sheetSeq: row.seq,
@@ -494,9 +583,19 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
   for (const { row, match } of resolved.matched) {
     let touched = false;
 
-    if (row.reply && !(existing.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
-      plan.newComments.push({ seq: match.seq, body: row.reply });
-      touched = true;
+    if (row.reply) {
+      const relation = replyRelation(row.reply, existing.commentsByCase.get(match.id) ?? []);
+      if (relation.kind === "new") {
+        plan.newComments.push({ seq: match.seq, body: row.reply });
+        touched = true;
+      } else if (relation.kind === "extends") {
+        plan.updatedComments.push({
+          seq: match.seq,
+          from: relation.comment.body,
+          to: normalise(row.reply),
+        });
+        touched = true;
+      }
     }
 
     for (const field of fields) {
@@ -510,6 +609,23 @@ export async function planSheetImport(board: SupaBoard): Promise<ImportPlan> {
   }
 
   return plan;
+}
+
+/**
+ * Whether a row the board has never seen should become a case.
+ *
+ * Without a cutoff everything unmatched gets created, and down in the archive
+ * "unmatched" mostly means the sheet reused a number years ago — so the
+ * import manufactures suffixed copies of cases nobody is working on. Rows
+ * before the cutoff are still matched; only creation is held back.
+ */
+function mayCreate(row: MappedRow, createFrom: string | undefined): boolean {
+  if (!createFrom) return true;
+  const date = toDateOrNull(row.createDate);
+  // A row with no readable date is recent far more often than not — it's
+  // usually today's entry, half typed. Better to bring it in than lose it.
+  if (!date) return true;
+  return date >= createFrom;
 }
 
 /**
@@ -536,18 +652,28 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   const rowDateOf = (r: MappedRow) =>
     toDateOrNull(r.updateDate) ?? toDateOrNull(r.createDate) ?? today;
 
-  const toInsert: { row: MappedRow; seq: string }[] = resolved.created;
+  const toInsert = resolved.created.filter(({ row }) => mayCreate(row, options.createFrom));
   const replies: { seq: string; body: string; at: string }[] = [];
+  const commentRewrites: { id: string; body: string; previous: string }[] = [];
   const updates: FieldUpdate[] = [];
 
-  for (const { row, seq } of resolved.created) {
+  for (const { row, seq } of toInsert) {
     if (row.reply) replies.push({ seq, body: row.reply, at: sheetTimestamp(rowDateOf(row)) });
   }
 
   for (const { row, match } of resolved.matched) {
     const rowDate = rowDateOf(row);
-    if (row.reply && !(existingBefore.bodiesByCase.get(match.id)?.has(row.reply) ?? false)) {
-      replies.push({ seq: match.seq, body: row.reply, at: sheetTimestamp(rowDate) });
+    if (row.reply) {
+      const relation = replyRelation(row.reply, existingBefore.commentsByCase.get(match.id) ?? []);
+      if (relation.kind === "new") {
+        replies.push({ seq: match.seq, body: row.reply, at: sheetTimestamp(rowDate) });
+      } else if (relation.kind === "extends") {
+        commentRewrites.push({
+          id: relation.comment.id,
+          body: normalise(row.reply),
+          previous: relation.comment.body,
+        });
+      }
     }
     for (const field of syncFields) {
       const diff = fieldDiff(row, match, field);
@@ -615,9 +741,50 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
     commentsInserted += (data ?? []).length;
   }
 
+  const commentsUpdated = await applyCommentRewrites(commentRewrites, authorId);
   const fieldsUpdated = await applyFieldUpdates(updates, authorId);
 
-  return { casesInserted, commentsInserted, fieldsUpdated };
+  return { casesInserted, commentsInserted, commentsUpdated, fieldsUpdated };
+}
+
+/**
+ * Rewrites replies the sheet has added to, keeping the version being replaced
+ * in comment_edit_history — the same trail a person editing the comment
+ * leaves, so nothing the import overwrites is lost.
+ */
+async function applyCommentRewrites(
+  rewrites: { id: string; body: string; previous: string }[],
+  editorId: string
+): Promise<number> {
+  if (rewrites.length === 0) return 0;
+  const supabase = getSupabaseClient();
+  const editedAt = new Date().toISOString();
+
+  const history = rewrites.map((r) => ({
+    comment_id: r.id,
+    previous_body: r.previous,
+    edited_by: editorId,
+    edited_at: editedAt,
+  }));
+  for (let i = 0; i < history.length; i += 200) {
+    const { error } = await supabase.from("comment_edit_history").insert(history.slice(i, i + 200));
+    if (error) throw new Error(`寫入留言編輯紀錄失敗: ${error.message}`);
+  }
+
+  // Each body is different, so these can't be grouped the way field updates
+  // are — but the set is small by design: only replies that actually grew.
+  let updated = 0;
+  for (const r of rewrites) {
+    const { data, error } = await supabase
+      .from("comments")
+      .update({ body: r.body, edited_at: editedAt })
+      .eq("id", r.id)
+      .select("id")
+      .maybeSingle<{ id: string }>();
+    if (error) throw new Error(`更新留言失敗: ${error.message}`);
+    if (data) updated += 1;
+  }
+  return updated;
 }
 
 interface FieldUpdate {

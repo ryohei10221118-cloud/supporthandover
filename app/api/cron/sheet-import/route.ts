@@ -36,6 +36,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Everything before the changeover is already on the boards; creating cases
+  // for what's left unmatched down there just manufactures suffixed copies of
+  // an archive. Older rows are still matched, so replies on cases that are
+  // still running keep coming through.
+  const rawFrom = (req.nextUrl.searchParams.get("createFrom") ?? "").trim();
+  const createFrom = /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? rawFrom : undefined;
+
   const only = req.nextUrl.searchParams.get("board");
   const boards = BOARDS.filter((b) => !only || b === only);
 
@@ -51,11 +58,14 @@ export async function GET(req: NextRequest) {
       continue;
     }
     try {
-      const result = await applySheetImport(board, { syncFields: [] });
+      const result = await applySheetImport(board, { syncFields: [], createFrom });
       results[board] = result;
-      if (result.casesInserted > 0 || result.commentsInserted > 0) wroteSomething = true;
+      if (result.casesInserted > 0 || result.commentsInserted > 0 || result.commentsUpdated > 0) {
+        wroteSomething = true;
+      }
       console.log(
-        `cron/sheet-import ${board}: +${result.casesInserted} cases, +${result.commentsInserted} comments`
+        `cron/sheet-import ${board}: +${result.casesInserted} cases, ` +
+          `+${result.commentsInserted} comments, ~${result.commentsUpdated} updated`
       );
     } catch (err) {
       // One board's sheet being unreachable shouldn't stop the other's import.

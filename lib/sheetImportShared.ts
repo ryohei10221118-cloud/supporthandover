@@ -65,6 +65,15 @@ export interface ImportPlanComment {
   body: string;
 }
 
+/** A reply the sheet has extended since it was last brought across. */
+export interface ImportPlanCommentUpdate {
+  seq: string;
+  /** What the comment says now. */
+  from: string;
+  /** What the sheet's cell says, which it will be rewritten to. */
+  to: string;
+}
+
 /** A case that exists on both sides but whose value for one field diverges. */
 export interface ImportPlanFieldChange {
   seq: string;
@@ -107,6 +116,14 @@ export interface ImportPlan {
   sheetRows: number;
   newCases: ImportPlanCase[];
   newComments: ImportPlanComment[];
+  /**
+   * Replies already brought across that the sheet has since added to. They
+   * are rewritten in place rather than added again — appending a fresh
+   * comment each time is what stacked up copies of everything already said.
+   */
+  updatedComments: ImportPlanCommentUpdate[];
+  /** Rows too old to create a case for, per createFrom. */
+  tooOldToCreate: number;
   /** Sequence numbers the sheet reuses, and what each row resolves to. */
   duplicates: ImportPlanDuplicate[];
   /**
@@ -125,12 +142,23 @@ export interface ImportPlan {
 export interface ImportResult {
   casesInserted: number;
   commentsInserted: number;
+  commentsUpdated: number;
   fieldsUpdated: number;
 }
 
 export interface ImportOptions {
   /** Which fields to take from the sheet on cases that already exist. */
   syncFields?: SyncField[];
+  /**
+   * Rows dated before this never create a case (YYYY-MM-DD).
+   *
+   * Everything before the changeover is already on the boards, and what is
+   * left unmatched down there is the sheet's reused numbering rather than
+   * missing work — creating cases for it just manufactures suffixed copies of
+   * an archive. Older rows are still matched, so replies and field changes on
+   * cases that are still running keep coming through.
+   */
+  createFrom?: string;
 }
 
 // --- Reply splitting (dry run only, nothing writes this yet) --------------

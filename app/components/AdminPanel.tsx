@@ -51,6 +51,20 @@ const STRINGS = {
   importNewComments: { zh: "將新增的回覆", en: "Replies to add" },
   importUnchanged: { zh: "已經同步、不會動的", en: "Already in sync" },
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
+  importUpdatedComments: { zh: "將更新的回覆", en: "Replies to update" },
+  importTooOld: { zh: "太舊、不建立", en: "Too old to create" },
+  importCreateFrom: { zh: "只建立這個日期之後的案件", en: "Only create cases dated on or after" },
+  importCreateFromHint: {
+    zh: "換日前的案件早就在看板上了，這條線之下配不到的，多半是 Sheet 很久以前重複用過的號碼 —— 建立它們只會生出一堆存檔的副本。舊資料還是會比對，所以還在跑的案件，新回覆跟欄位變更照樣收得到。留空 = 全部都建立。",
+    en: "Everything before the changeover is already on the boards, and what stays unmatched below this line is mostly the sheet's reused numbering — creating it just manufactures copies of an archive. Older rows are still matched, so replies and field changes on cases still running keep coming through. Blank means create everything.",
+  },
+  importUpdatedTitle: { zh: "會被更新的回覆", en: "Replies that will be rewritten" },
+  importUpdatedHint: {
+    zh: "Sheet 那一格被往下追加過，所以直接改寫原本那則留言，而不是再新增一則 —— 每次匯入都新增，就是留言一直疊出「包含前面全部內容」的副本的原因。舊的內容會留在該留言的編輯紀錄裡。只有匯入自己寫的留言會被改寫，人在工具上打的不會動到。",
+    en: "The sheet's cell has been added to, so the existing comment is rewritten rather than a second one appended — appending each time is what stacked up copies of everything already said. The previous text is kept in that comment's edit history. Only comments the import itself wrote are ever rewritten; anything a person typed here is left alone.",
+  },
+  importColWas: { zh: "原本", en: "Was" },
+  importColNow: { zh: "改成", en: "Becomes" },
   importDupCount: { zh: "序列重複", en: "Reused IDs" },
 
   splitTitle: { zh: "留言拆分試算", en: "Comment split — dry run" },
@@ -112,10 +126,10 @@ const STRINGS = {
   importColSheetSeq: { zh: "Sheet 序列", en: "Sheet number" },
   importNothing: { zh: "沒有需要補進來的東西，看板已經跟 Sheet 同步。", en: "Nothing to bring across — the board matches the sheet." },
   importDone: {
-    zh: (c: number, m: number, s: number) =>
-      `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆，更新 ${s.toLocaleString()} 個欄位。`,
-    en: (c: number, m: number, s: number) =>
-      `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added, ${s.toLocaleString()} fields updated.`,
+    zh: (c: number, m: number, u: number, s: number) =>
+      `完成：新增 ${c.toLocaleString()} 筆案件、${m.toLocaleString()} 則回覆，更新 ${u.toLocaleString()} 則回覆、${s.toLocaleString()} 個欄位。`,
+    en: (c: number, m: number, u: number, s: number) =>
+      `Done: ${c.toLocaleString()} cases and ${m.toLocaleString()} replies added, ${u.toLocaleString()} replies and ${s.toLocaleString()} fields updated.`,
   },
   importSample: { zh: "將新增的案件（前 20 筆）", en: "Cases to add (first 20)" },
   importSampleHint: {
@@ -450,6 +464,8 @@ export default function AdminPanel({
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [importBoard, setImportBoard] = useState<"t1ho" | "ho">("t1ho");
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+  // The changeover date. Everything before it is on the boards already.
+  const [createFrom, setCreateFrom] = useState("2026-08-10");
   // Cleared every time a plan is drawn up, so an earlier tick can't carry
   // over into a later import the user hasn't looked at.
   const [syncFields, setSyncFields] = useState<SyncField[]>([]);
@@ -489,13 +505,19 @@ export default function AdminPanel({
   async function previewImport() {
     setPlan(null);
     setSyncFields([]);
-    const data = await call(`/api/admin/sheet-import?board=${importBoard}`, "GET");
+    const data = await call(
+      `/api/admin/sheet-import?board=${importBoard}&createFrom=${createFrom}`,
+      "GET"
+    );
     if (data) setPlan(data as unknown as ImportPlan);
   }
 
   async function runImport() {
     const query = syncFields.length > 0 ? `&syncFields=${syncFields.join(",")}` : "";
-    const data = await call(`/api/admin/sheet-import?board=${importBoard}${query}`, "POST");
+    const data = await call(
+      `/api/admin/sheet-import?board=${importBoard}&createFrom=${createFrom}${query}`,
+      "POST"
+    );
     setImportConfirmOpen(false);
     if (!data) return;
     setSyncFields([]);
@@ -506,6 +528,7 @@ export default function AdminPanel({
         "importDone",
         Number(data.casesInserted ?? 0),
         Number(data.commentsInserted ?? 0),
+        Number(data.commentsUpdated ?? 0),
         Number(data.fieldsUpdated ?? 0)
       )
     );
@@ -910,12 +933,29 @@ export default function AdminPanel({
               {plan &&
                 (plan.newCases.length > 0 ||
                   plan.newComments.length > 0 ||
+                  plan.updatedComments.length > 0 ||
                   pendingSync > 0) && (
                   <button type="button" className="primary" disabled={busy} onClick={() => setImportConfirmOpen(true)}>
                     {t(lang, "importRun")}
                   </button>
                 )}
             </div>
+
+            <div className="field-row">
+              <label htmlFor="import-from">{t(lang, "importCreateFrom")}</label>
+              <input
+                id="import-from"
+                type="date"
+                className="threshold"
+                value={createFrom}
+                disabled={busy}
+                onChange={(e) => {
+                  setCreateFrom(e.target.value);
+                  setPlan(null);
+                }}
+              />
+            </div>
+            <p className="hint">{t(lang, "importCreateFromHint")}</p>
 
             {importBoard === "ho" && <p className="hint">{t(lang, "importHoNote")}</p>}
 
@@ -935,6 +975,14 @@ export default function AdminPanel({
                     <div className="l">{t(lang, "importNewComments")}</div>
                   </div>
                   <div className="archive-stat">
+                    <div className="n">{plan.updatedComments.length.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importUpdatedComments")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{plan.tooOldToCreate.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importTooOld")}</div>
+                  </div>
+                  <div className="archive-stat">
                     <div className="n">{plan.fieldChanges.length.toLocaleString()}</div>
                     <div className="l">{t(lang, "importFieldDiff")}</div>
                   </div>
@@ -950,6 +998,7 @@ export default function AdminPanel({
 
                 {plan.newCases.length === 0 &&
                   plan.newComments.length === 0 &&
+                  plan.updatedComments.length === 0 &&
                   plan.fieldChanges.length === 0 &&
                   plan.duplicates.length === 0 && (
                     <p className="hint" style={{ marginTop: 14 }}>
@@ -1047,6 +1096,35 @@ export default function AdminPanel({
                               <td className="muted">{c.category || "—"}</td>
                               <td className="muted">{c.priority || "—"}</td>
                               <td className="muted">{c.content.slice(0, 60)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {plan.updatedComments.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
+                      {t(lang, "importUpdatedTitle")}
+                    </p>
+                    <p className="hint">{t(lang, "importUpdatedHint")}</p>
+                    <div className="table-scroll" style={{ marginTop: 8 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>序列</th>
+                            <th>{t(lang, "importColWas")}</th>
+                            <th>{t(lang, "importColNow")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.updatedComments.slice(0, 30).map((c) => (
+                            <tr key={`${c.seq}-${c.from.length}`}>
+                              <td>{c.seq}</td>
+                              <td className="muted">{truncate(c.from, 70)}</td>
+                              <td>{truncate(c.to, 70)}</td>
                             </tr>
                           ))}
                         </tbody>
