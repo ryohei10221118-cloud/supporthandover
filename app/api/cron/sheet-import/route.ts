@@ -5,15 +5,25 @@ import { applySheetImport, sheetSourceFor } from "@/lib/sheetImport";
 import type { SupaBoard } from "@/lib/supabaseCases";
 
 export const dynamic = "force-dynamic";
-// Reading a whole sheet plus both tables takes a while on a big board, and
-// this does it for each one in turn.
-export const maxDuration = 300;
+// 60s is the ceiling on Vercel's Hobby plan, and asking for more than the plan
+// allows fails the deployment rather than granting it. Pass ?board= to handle
+// one board per call if a single run ever gets close to that.
+export const maxDuration = 60;
 
 const BOARDS: SupaBoard[] = ["t1ho", "ho"];
 
 /**
  * The scheduled half of the Sheet import, for keeping the boards current
  * while the sheet is still where the work happens.
+ *
+ * Nothing about it is specific to Vercel Cron — it is an authenticated GET, so
+ * any scheduler that can send a header will do, which is what makes a useful
+ * interval possible on a plan whose own scheduler only fires daily.
+ *
+ * Two runs at once can collide: both work out the same next case number and
+ * the unique index rejects the loser, failing that chunk. It resolves itself
+ * on the following run, but it is a reason to leave more time between calls
+ * than a run takes, and not to point two schedulers at this at once.
  *
  * Insert-only, always: it brings across cases and replies the boards don't
  * have and touches nothing that already exists. Field syncing stays manual

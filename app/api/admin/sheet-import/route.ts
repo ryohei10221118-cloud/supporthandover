@@ -6,8 +6,10 @@ import { applySheetImport, isSyncField, planSheetImport } from "@/lib/sheetImpor
 import type { SupaBoard } from "@/lib/supabaseCases";
 
 export const dynamic = "force-dynamic";
-// Reading a whole sheet plus both tables takes a while on a big board.
-export const maxDuration = 120;
+// Reading a whole sheet plus both tables takes a while on a big board — but
+// 60s is the ceiling on Hobby, and asking for more than the plan allows fails
+// the deployment.
+export const maxDuration = 60;
 
 function boardFrom(req: NextRequest): SupaBoard {
   return req.nextUrl.searchParams.get("board") === "ho" ? "ho" : "t1ho";

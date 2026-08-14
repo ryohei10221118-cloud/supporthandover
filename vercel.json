@@ -1,10 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["hnd1"],
-  "crons": [
-    {
-      "path": "/api/cron/sheet-import?board=ho",
-      "schedule": "0 1 * * *"
-    }
-  ]
+  "regions": ["hnd1"]
 }
