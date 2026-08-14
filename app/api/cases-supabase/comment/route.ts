@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { CASES_TAG } from "@/lib/cacheTags";
+import { parseIncomingAttachments, saveAttachments } from "@/lib/attachments";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
   const caseId = typeof body?.caseId === "string" ? body.caseId : "";
   const board = body?.board === "t1ho" || body?.board === "ho" ? body.board : null;
   const message = typeof body?.message === "string" ? body.message.trim() : "";
+  const attachments = parseIncomingAttachments(body?.attachments);
 
   if (!caseId || !board) {
     return NextResponse.json({ error: "案件資訊有誤" }, { status: 400 });
@@ -26,7 +28,9 @@ export async function POST(req: Request) {
   if (!role.permissions[board === "t1ho" ? "comment.t1ho" : "comment.ho"]) {
     return NextResponse.json({ error: "你的權限無法在這個看板留言" }, { status: 403 });
   }
-  if (!message) {
+  // A screenshot on its own is a legitimate update — "here's what it looks
+  // like" needs no words — so text is only required when nothing is attached.
+  if (!message && attachments.length === 0) {
     return NextResponse.json({ error: "請輸入留言內容" }, { status: 400 });
   }
   if (message.length > 2000) {
@@ -59,6 +63,10 @@ export async function POST(req: Request) {
       .single<{ id: string; body: string; created_at: string }>();
     if (insertError || !inserted) throw new Error(insertError?.message ?? "insert failed");
 
+    // Filed against the comment and the case both, so a case still knows
+    // about every image under it without walking its comments.
+    const saved = await saveAttachments({ caseId, commentId: inserted.id }, authorId, attachments);
+
     revalidateTag(CASES_TAG, "max");
     return NextResponse.json({
       ok: true,
@@ -69,7 +77,7 @@ export async function POST(req: Request) {
         createdAt: inserted.created_at,
         editedAt: null,
         edits: [],
-        attachments: [],
+        attachments: saved.map((a) => ({ id: a.id, commentId: inserted.id, fileName: a.name, url: a.url })),
       },
     });
   } catch (err) {

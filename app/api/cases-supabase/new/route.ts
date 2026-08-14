@@ -2,31 +2,13 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { prettyDisplayName } from "@/lib/auth";
 import { CASES_TAG } from "@/lib/cacheTags";
+import { parseIncomingAttachments, saveAttachments } from "@/lib/attachments";
 import { insertWithNextSeq } from "@/lib/nextSeq";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getSessionRole } from "@/lib/permissionsServer";
 import { resolveSupabaseUserId } from "@/lib/supabaseUsers";
 
 export const dynamic = "force-dynamic";
-
-const BUCKET = "case-attachments";
-const MAX_BYTES = 2 * 1024 * 1024;
-
-interface IncomingAttachment {
-  name: string;
-  // Either an inline image (data URL, under the 2MB limit) or, for oversize
-  // files the client refused to upload, just an external link.
-  dataUrl?: string;
-  url?: string;
-}
-
-function parseDataUrl(dataUrl: string): { contentType: string; bytes: Buffer } | null {
-  const match = dataUrl.match(/^data:([\w/+.-]+);base64,(.+)$/);
-  if (!match) return null;
-  const [, contentType, base64] = match;
-  if (!contentType.startsWith("image/")) return null;
-  return { contentType, bytes: Buffer.from(base64, "base64") };
-}
 
 export async function POST(req: Request) {
   const role = await getSessionRole();
@@ -46,7 +28,7 @@ export async function POST(req: Request) {
   const hoClass = typeof body?.hoClass === "string" ? body.hoClass.trim() : "";
   const status = typeof body?.status === "string" ? body.status.trim() : "";
   const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : "";
-  const attachments: IncomingAttachment[] = Array.isArray(body?.attachments) ? body.attachments.slice(0, 10) : [];
+  const attachments = parseIncomingAttachments(body?.attachments);
 
   if (!board) {
     return NextResponse.json({ error: "資料有誤" }, { status: 400 });
@@ -92,47 +74,7 @@ export async function POST(req: Request) {
       "id, seq"
     );
 
-    // Screenshots. Oversize files never reach here as data — the client sends
-    // just the link the user pasted instead.
-    const saved: { name: string; url: string }[] = [];
-    for (const [i, att] of attachments.entries()) {
-      const name = typeof att?.name === "string" ? att.name.slice(0, 200) : `screenshot-${i + 1}`;
-
-      if (typeof att?.url === "string" && att.url.trim()) {
-        // Oversize files are never uploaded — the user pastes a link
-        // instead, so there's no storage_path for these.
-        const url = att.url.trim();
-        if (!/^https?:\/\//i.test(url)) continue;
-        const { error } = await supabase
-          .from("attachments")
-          .insert({ case_id: created.id, file_name: name, external_url: url, uploaded_by: createdBy });
-        if (error) throw new Error(error.message);
-        saved.push({ name, url });
-        continue;
-      }
-
-      if (typeof att?.dataUrl !== "string") continue;
-      const parsed = parseDataUrl(att.dataUrl);
-      if (!parsed || parsed.bytes.byteLength > MAX_BYTES) continue;
-
-      const ext = parsed.contentType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "png";
-      const path = `${created.id}/${Date.now()}-${i}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, parsed.bytes, { contentType: parsed.contentType, upsert: false });
-      if (uploadError) throw new Error(`上傳截圖失敗: ${uploadError.message}`);
-
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      const { error } = await supabase.from("attachments").insert({
-        case_id: created.id,
-        file_name: name,
-        storage_path: path,
-        size_bytes: parsed.bytes.byteLength,
-        uploaded_by: createdBy,
-      });
-      if (error) throw new Error(error.message);
-      saved.push({ name, url: pub.publicUrl });
-    }
+    const saved = await saveAttachments({ caseId: created.id }, createdBy, attachments);
 
     // The row was added to the table, not just changed — a stale cache would
     // make it disappear again on the next navigation.

@@ -2000,6 +2000,73 @@ tr:hover .row-delete-btn,
   background: color-mix(in srgb, var(--overdue) 12%, transparent);
 }
 
+/* Screenshots queued for the comment being written. The form aligns its
+   children to the right for the send button; these belong under the text
+   they go with, so they take the full width and start from the left. */
+.pending-images {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.pending-image {
+  position: relative;
+  display: inline-flex;
+}
+
+.pending-image img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.pending-image button {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: var(--overdue);
+  color: #fff;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+/* The input itself is hidden; the label is the button. */
+.attach-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.attach-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.attach-btn input {
+  display: none;
+}
+
 .comment-edit-form {
   display: flex;
   gap: 6px;

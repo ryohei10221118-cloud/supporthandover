@@ -81,7 +81,13 @@ const STRINGS = {
   // Row-level history entries — what happened, not what it said.
   commentAdded: { zh: "新增留言", en: "Comment added" },
   commentEdited: { zh: "編輯留言", en: "Comment edited" },
-  commentPlaceholder: { zh: "輸入留言…", en: "Write a comment…" },
+  commentPlaceholder: { zh: "輸入留言…（可直接 Ctrl+V 貼上截圖）", en: "Write a comment… (Ctrl+V to paste a screenshot)" },
+  attachImage: { zh: "附加截圖", en: "Attach image" },
+  attachOversize: {
+    zh: (name: string) => `${name} 超過 2MB，沒有附加上去。`,
+    en: (name: string) => `${name} is over 2MB and wasn't attached.`,
+  },
+  attachRemove: { zh: "移除", en: "Remove" },
   send: { zh: "送出", en: "Send" },
   submitting: { zh: "送出中...", en: "Submitting..." },
   commentRequired: { zh: "請輸入留言內容", en: "Please enter a comment" },
@@ -135,6 +141,18 @@ function displayNameFromEmail(email: string): string {
 // "sunny.l" -> "Sunny". Account names carry a surname initial and arrive
 // lowercased; on a board people read at a glance, the given name is what
 // identifies someone. Display only — the stored value is left alone.
+/** A screenshot picked for a comment, before it is sent. */
+interface PendingImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+}
+
+// Matches the server's ceiling; refusing here means the oversize file never
+// travels at all, and the person is told which one rather than watching a
+// silent no-op.
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
 function prettyName(raw: string): string {
   const first = raw.trim().split(/[.\s_-]+/)[0] ?? "";
   if (!first) return raw.trim();
@@ -513,6 +531,9 @@ function CommentThread({
   onOpenImage,
   onDeleteComment,
   canDeleteComment,
+  pendingImages,
+  onAddImages,
+  onRemoveImage,
 }: {
   comments: SupaComment[];
   cellKey: string;
@@ -539,6 +560,9 @@ function CommentThread({
   onOpenImage: (a: SupaAttachment) => void;
   onDeleteComment: (c: SupaComment) => void;
   canDeleteComment: (c: SupaComment) => boolean;
+  pendingImages: PendingImage[];
+  onAddImages: (files: FileList | File[]) => void;
+  onRemoveImage: (id: string) => void;
 }) {
   const isExpanded = expanded.has(cellKey);
   // Collapsed threads show only the first comment (the mockup's
@@ -625,6 +649,17 @@ function CommentThread({
               placeholder={t(lang, "commentPlaceholder")}
               value={commentDraft}
               onChange={(e) => onCommentDraftChange(e.target.value)}
+              onPaste={(e) => {
+                // A screenshot in the clipboard arrives as an image item; the
+                // text path is left alone so pasting text still works.
+                const files = Array.from(e.clipboardData.items)
+                  .filter((i) => i.kind === "file" && i.type.startsWith("image/"))
+                  .map((i) => i.getAsFile())
+                  .filter((f): f is File => f !== null);
+                if (files.length === 0) return;
+                e.preventDefault();
+                onAddImages(files);
+              }}
               onKeyDown={(e) => {
                 // Enter submits, Shift+Enter adds a newline, Escape closes —
                 // matching the mockup's wireCommentTextareaKeys.
@@ -636,10 +671,48 @@ function CommentThread({
                 }
               }}
             />
+            {pendingImages.length > 0 && (
+              <div className="pending-images">
+                {pendingImages.map((img) => (
+                  <span key={img.id} className="pending-image">
+                    {/* Local preview only — never uploaded until the comment is
+                        sent, so an abandoned draft leaves nothing behind. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.dataUrl} alt={img.name} />
+                    <button
+                      type="button"
+                      aria-label={`${t(lang, "attachRemove")} ${img.name}`}
+                      onClick={() => onRemoveImage(img.id)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {commentError && <div className="comment-error">{commentError}</div>}
-            <button type="button" className="send-comment-btn" disabled={commentSubmitting} onClick={onSubmitComment}>
-              {commentSubmitting ? t(lang, "submitting") : t(lang, "send")}
-            </button>
+            <div className="comment-actions">
+              <label className="attach-btn" title={t(lang, "attachImage")}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    if (e.target.files) onAddImages(e.target.files);
+                    // Cleared so picking the same file twice still fires.
+                    e.target.value = "";
+                  }}
+                />
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </label>
+              <button type="button" className="send-comment-btn" disabled={commentSubmitting} onClick={onSubmitComment}>
+                {commentSubmitting ? t(lang, "submitting") : t(lang, "send")}
+              </button>
+            </div>
           </div>
         ) : (
           <button type="button" className="add-comment-btn" onClick={onOpenForm}>
@@ -1145,10 +1218,42 @@ export default function SupaBoard({
     setOpenCommentKey(key);
     setCommentDraft("");
     setCommentError(null);
+    // Otherwise a screenshot picked for one case follows you to the next.
+    setPendingImages([]);
+  }
+
+  // Screenshots chosen for the comment being written. Held here as data URLs
+  // and only uploaded when the comment is sent, so closing the form without
+  // sending leaves nothing behind in storage.
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+
+  function addPendingImages(files: FileList | File[]) {
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) continue;
+      if (file.size > MAX_IMAGE_BYTES) {
+        setCommentError(t(lang, "attachOversize", file.name));
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setPendingImages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            // A pasted screenshot has no filename of its own.
+            name: file.name || "screenshot.png",
+            dataUrl: String(reader.result),
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    }
   }
 
   async function submitComment(c: SupaCaseRow) {
-    if (!commentDraft.trim()) {
+    // A screenshot on its own says plenty; only require words when there is
+    // nothing else to send.
+    if (!commentDraft.trim() && pendingImages.length === 0) {
       setCommentError(t(lang, "commentRequired"));
       return;
     }
@@ -1158,7 +1263,12 @@ export default function SupaBoard({
       const res = await fetch("/api/cases-supabase/comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseId: c.id, board, message: commentDraft.trim() }),
+        body: JSON.stringify({
+          caseId: c.id,
+          board,
+          message: commentDraft.trim(),
+          attachments: pendingImages.map((i) => ({ name: i.name, dataUrl: i.dataUrl })),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1167,6 +1277,7 @@ export default function SupaBoard({
       }
       const newComment: SupaComment = data.comment;
       setCases((prev) => prev.map((row) => (row.id === c.id ? { ...row, comments: [...row.comments, newComment], latestNote: newComment.body } : row)));
+      setPendingImages([]);
       setOpenCommentKey(null);
     } finally {
       setCommentSubmitting(false);
@@ -1583,7 +1694,10 @@ export default function SupaBoard({
             formOpen={openCommentKey === rowKey}
             canComment={canComment}
             onOpenForm={() => openComment(rowKey)}
-            onCloseForm={() => setOpenCommentKey(null)}
+            onCloseForm={() => {
+              setOpenCommentKey(null);
+              setPendingImages([]);
+            }}
             commentDraft={commentDraft}
             onCommentDraftChange={setCommentDraft}
             commentSubmitting={commentSubmitting}
@@ -1595,6 +1709,9 @@ export default function SupaBoard({
               setDeleteCommentTarget(cm);
             }}
             canDeleteComment={canDeleteComment}
+            pendingImages={openCommentKey === rowKey ? pendingImages : []}
+            onAddImages={addPendingImages}
+            onRemoveImage={(id) => setPendingImages((prev) => prev.filter((i) => i.id !== id))}
           />
         );
       case "relatedTicket":
