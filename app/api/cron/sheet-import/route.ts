@@ -79,17 +79,29 @@ export async function GET(req: NextRequest) {
       // Read before importing, stored after: an edit made while this runs
       // moves Drive's clock past the value we keep, so the next run sees the
       // mismatch and picks it up instead of swallowing it.
-      const modifiedAt = await getSheetModifiedTime(source.spreadsheetId).catch(() => null);
+      //
+      // Both halves are reported back, because a run that fails to skip looks
+      // exactly like one that had nothing to skip — the only way to tell them
+      // apart from the outside is to say what was compared against what.
+      let modifiedAt: string | null = null;
+      let checkError: string | null = null;
+      try {
+        modifiedAt = await getSheetModifiedTime(source.spreadsheetId);
+      } catch (err) {
+        checkError = err instanceof Error ? err.message : String(err);
+        console.error(`cron/sheet-import ${board}: modifiedTime lookup failed:`, checkError);
+      }
       const state = await readSyncState(board);
+      const seen = { sheetModifiedAt: modifiedAt, lastSeen: state?.sheetModifiedAt ?? null, checkError };
 
       if (!force && modifiedAt && state?.sheetModifiedAt === modifiedAt) {
-        results[board] = { skipped: "unchanged", sheetModifiedAt: modifiedAt };
+        results[board] = { skipped: "unchanged", ...seen };
         continue;
       }
 
       const result = await applySheetImport(board, { syncFields: [], createFrom });
       await writeSyncState(board, modifiedAt);
-      results[board] = result;
+      results[board] = { ...result, ...seen };
       if (result.casesInserted > 0 || result.commentsInserted > 0 || result.commentsUpdated > 0) {
         wroteSomething = true;
       }

@@ -25,7 +25,10 @@ export async function readSyncState(board: SupaBoard): Promise<SyncState | null>
     .maybeSingle<{ board: SupaBoard; sheet_modified_at: string | null; last_run_at: string | null }>();
   // A missing table means the migration hasn't been run: fall back to always
   // importing rather than refusing to, since that is the behaviour this
-  // replaces and it is never wrong, only wasteful.
+  // replaces and it is never wrong, only wasteful. Logged either way — a
+  // table that silently never reads is indistinguishable from a sheet that
+  // changes every time.
+  if (error) console.error(`sync_state read failed for ${board}:`, error.message);
   if (error || !data) return null;
   return { board: data.board, sheetModifiedAt: data.sheet_modified_at, lastRunAt: data.last_run_at };
 }
