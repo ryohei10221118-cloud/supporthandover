@@ -7,7 +7,6 @@ import { resolveSupabaseUserId } from "./supabaseUsers";
 import { SHEET_IMPORT_EMAIL } from "./systemAccounts";
 import type { SupaBoard } from "./supabaseCases";
 import { SYNC_FIELDS, SYNC_FIELD_KEYS, syncFieldsForBoard } from "./sheetImportShared";
-import { splitReply } from "./replySplit";
 import type {
   ImportOptions,
   ImportPlan,
@@ -15,8 +14,6 @@ import type {
   ImportPlanDuplicate,
   ImportPlanCommentUpdate,
   ImportResult,
-  ReplySplitPreview,
-  ReplySplitSample,
   SyncField,
 } from "./sheetImportShared";
 
@@ -530,8 +527,21 @@ function fieldDiff(
   const from = normalise(sheetValue(row, field));
   if (!from) return null;
   const to = normalise((match[SYNC_FIELDS[field].column] ?? "").toString());
-  if (from.toLowerCase() === to.toLowerCase()) return null;
+  if (comparable(from) === comparable(to)) return null;
   return { from, to };
+}
+
+/**
+ * The form two values are compared in: case folded, and every run of
+ * whitespace treated as one space.
+ *
+ * Collapsing whitespace matters most for content, which arrives from a
+ * multi-line cell — a stray double space or a line break that moved is not a
+ * change anybody wants to review, and listing it produces exactly the diff
+ * that looks identical on both sides of the table.
+ */
+function comparable(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 /** Works out what an import would do, without writing anything. */
@@ -849,77 +859,4 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
     }
   }
   return updated;
-}
-
-/**
- * What splitting the T1 HO reply cells would produce, without writing any of
- * it. Only the counts and a sample matter here: the rule is narrow on purpose,
- * so the question to answer from this is not "does it work" but "where does it
- * decline to split, and is that the right call".
- */
-export async function previewReplySplit(recentFrom = "2026-08-10"): Promise<ReplySplitPreview> {
-  if (!hasServiceAccountConfig()) {
-    throw new Error("Google Sheets 服務帳戶未設定。");
-  }
-
-  const rows = await readSheet("t1ho");
-  const years = new Map<string, { cells: number; split: number }>();
-  const preview: ReplySplitPreview = {
-    byYear: [],
-    recentCells: 0,
-    recentSplit: 0,
-    recentFrom,
-    cellsWithReplies: 0,
-    cellsSplit: 0,
-    entriesProduced: 0,
-    cellsUnsplit: 0,
-    entriesWithTime: 0,
-    cellsAmbiguous: 0,
-    samples: [],
-    ambiguousSamples: [],
-  };
-
-  for (const row of rows) {
-    if (!row.reply.trim()) continue;
-    preview.cellsWithReplies += 1;
-
-    const { entries, ambiguous } = splitReply(row.reply, toDateOrNull(row.createDate) ?? row.createDate);
-    preview.entriesProduced += entries.length;
-    preview.entriesWithTime += entries.filter((e) => e.at !== null).length;
-    const willSplit = entries.length > 1;
-    if (willSplit) preview.cellsSplit += 1;
-    else preview.cellsUnsplit += 1;
-
-    const rowDate = toDateOrNull(row.createDate);
-    const year = rowDate ? rowDate.slice(0, 4) : "—";
-    const bucket = years.get(year) ?? { cells: 0, split: 0 };
-    bucket.cells += 1;
-    if (willSplit) bucket.split += 1;
-    years.set(year, bucket);
-
-    if (rowDate && rowDate >= recentFrom) {
-      preview.recentCells += 1;
-      if (willSplit) preview.recentSplit += 1;
-    }
-
-    const sample: ReplySplitSample = {
-      seq: row.seq,
-      date: row.createDate,
-      cell: row.reply,
-      entries,
-      ambiguous,
-    };
-    if (ambiguous.length > 0) {
-      preview.cellsAmbiguous += 1;
-      // Every flagged cell is a judgement call, so keep a generous sample.
-      if (preview.ambiguousSamples.length < 40) preview.ambiguousSamples.push(sample);
-    }
-    if (entries.length > 1 && preview.samples.length < 40) preview.samples.push(sample);
-  }
-
-  preview.byYear = [...years.entries()]
-    .map(([year, b]) => ({ year, ...b }))
-    .sort((a, b) => a.year.localeCompare(b.year));
-
-  return preview;
 }

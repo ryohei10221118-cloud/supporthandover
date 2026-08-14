@@ -15,12 +15,19 @@ import {
   SYNC_FIELDS,
   SYNC_FIELD_KEYS,
   type ImportPlan,
-  type ReplySplitPreview,
   type SyncField,
 } from "@/lib/sheetImportShared";
 import { STATUS_LIST_KEY, type StatusRuleRow } from "@/lib/statusRulesShared";
 
 type Lang = "zh" | "en";
+
+/**
+ * The changeover. Cases dated before it were brought across in one go, so the
+ * import never creates anything older — see importCreateFromHint. Fixed
+ * rather than a control: it names a date that has already happened, and a
+ * date picker invites somebody to change it to a value that means nothing.
+ */
+const CREATE_FROM = "2026-08-10";
 type Tab = "roles" | "permissions" | "status" | "archive" | "import";
 
 const STRINGS = {
@@ -53,10 +60,11 @@ const STRINGS = {
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
   importUpdatedComments: { zh: "將更新的回覆", en: "Replies to update" },
   importTooOld: { zh: "太舊、不建立", en: "Too old to create" },
-  importCreateFrom: { zh: "只建立這個日期之後的案件", en: "Only create cases dated on or after" },
   importCreateFromHint: {
-    zh: "換日前的案件早就在看板上了，這條線之下配不到的，多半是 Sheet 很久以前重複用過的號碼 —— 建立它們只會生出一堆存檔的副本。舊資料還是會比對，所以還在跑的案件，新回覆跟欄位變更照樣收得到。留空 = 全部都建立。",
-    en: "Everything before the changeover is already on the boards, and what stays unmatched below this line is mostly the sheet's reused numbering — creating it just manufactures copies of an archive. Older rows are still matched, so replies and field changes on cases still running keep coming through. Blank means create everything.",
+    zh: (d: string) =>
+      `只有 ${d} 之後的案件會被建立。更早的案件在換到工具時就都搬過來了，這條線之下還配不到的，多半是 Sheet 很久以前重複用過的號碼 —— 建立它們只會生出一堆存檔的副本。舊資料還是會比對，所以還在跑的案件，新回覆跟欄位變更照樣收得到。`,
+    en: (d: string) =>
+      `Only cases dated on or after ${d} are created. Everything earlier came across at the changeover, and what stays unmatched below that line is mostly the sheet's reused numbering — creating it just manufactures copies of an archive. Older rows are still matched, so replies and field changes on cases still running keep coming through.`,
   },
   importUpdatedTitle: { zh: "會被更新的回覆", en: "Replies that will be rewritten" },
   importUpdatedHint: {
@@ -67,43 +75,6 @@ const STRINGS = {
   importColNow: { zh: "改成", en: "Becomes" },
   importDupCount: { zh: "序列重複", en: "Reused IDs" },
 
-  splitTitle: { zh: "留言拆分試算", en: "Comment split — dry run" },
-  splitIntro: {
-    zh: "T1 HO 的「回答內容」是一格一直往下追加的，現在整格當成一則留言，所以每次匯入只要那格長過，就會多一則包含前面全部內容的留言。這裡試算如果改成按時間拆成一則一則會變怎樣 —— 只是試算，不會寫入任何東西。",
-    en: "T1 HO's reply column is one cell people append to, and the import treats the whole cell as a single comment — so every run where it has grown adds another copy of everything before. This shows what splitting it by time would produce. Nothing is written.",
-  },
-  splitRule: {
-    zh: "拆分規則刻意保守：只在「一行以時間開頭」的地方切。時間出現在句子中間、名字排在時間前面、或整格根本沒有時間的，一律不拆，維持現在的樣子。漏拆只是跟今天一樣，拆錯會把人家的句子切成兩半。",
-    en: "The rule is deliberately narrow: split only where a line begins with a time. A time mid-sentence, a name before the time, or no time at all leaves the text as it is. A missed split is just today's behaviour; a wrong one cuts somebody's sentence in half.",
-  },
-  splitRun: { zh: "試算", en: "Run" },
-  splitCells: { zh: "有回覆的資料列", en: "Rows with replies" },
-  splitWillSplit: { zh: "會被拆開的", en: "Cells that split" },
-  splitEntries: { zh: "拆完的留言數", en: "Comments produced" },
-  splitUnsplit: { zh: "維持一則", en: "Left whole" },
-  splitWithTime: { zh: "有真實時間的", en: "With a real time" },
-  splitAmbiguous: { zh: "可能漏拆", en: "Possible misses" },
-  splitByYear: { zh: "有回覆的資料列，按年份", en: "Rows with replies, by year" },
-  splitByYearHint: {
-    zh: "下面的抽樣是照 Sheet 順序取的，而 Sheet 按時間排，所以看到的一定是最舊的那幾筆 —— 分佈要看這張表，不能看抽樣。",
-    en: "The samples below come out in sheet order, which is chronological, so they are always the oldest rows. Read the distribution here, not from the samples.",
-  },
-  splitColYear: { zh: "年份", en: "Year" },
-  splitColCells: { zh: "有回覆的資料列", en: "Rows with replies" },
-  splitColSplit: { zh: "其中會被拆開的", en: "…that would split" },
-  splitRecent: {
-    zh: (d: string) => `${d} 之後`,
-    en: (d: string) => `On or after ${d}`,
-  },
-  splitSamples: { zh: "拆分結果抽樣", en: "How they split" },
-  splitAmbiguousTitle: { zh: "可能漏拆的（要你判斷）", en: "Possible misses — your call" },
-  splitAmbiguousHint: {
-    zh: "這些行裡有時間，但不在行首（例如「SAM 12:43 >…」名字排在前面）。目前不會在這裡切開，整段會併到上一則。要不要連這種也拆，看你覺得這樣算不算同一段。",
-    en: "These lines carry a time that isn't at the start — a name comes first, as in \u201cSAM 12:43 >…\u201d. They aren't split on, so the text joins the entry above. Whether that's right is a judgement call.",
-  },
-  splitNoTime: { zh: "無時間", en: "no time" },
-  splitBefore: { zh: "現在（一整格 = 一則留言）", en: "Today (whole cell = one comment)" },
-  splitAfter: { zh: "拆完", en: "After splitting" },
   importDupTitle: { zh: "序列重複、還沒補進來的", en: "Reused numbers still to bring in" },
   importDupAllDone: {
     zh: (n: number) =>
@@ -154,7 +125,6 @@ const STRINGS = {
       `It will also overwrite ${fields} on existing cases — ${n.toLocaleString()} fields in all. The board's current values are replaced; the old ones are kept in each field's edit history.`,
   },
   importConfirm: { zh: "確定匯入", en: "Import" },
-
   importSyncTitle: { zh: "要同步哪些欄位", en: "Which fields to sync" },
   importSyncHint: {
     zh: "預設全部不勾，因為同一筆案件可能兩邊都動過 —— 如果你在工具上已經改過了，Sheet 的舊值會把它洗掉。勾起來的欄位才會被覆蓋，其餘完全不動。",
@@ -287,6 +257,31 @@ const ROLE_BADGE_CLASS: Record<string, string> = {
 function truncate(v: string, max = 60): string {
   const one = v.replace(/\s+/g, " ").trim();
   return one.length > max ? `${one.slice(0, max)}…` : one;
+}
+
+/**
+ * The two values cut to the stretch where they stop agreeing.
+ *
+ * Trimming from the start hides the answer: a case's content runs for
+ * paragraphs and typically diverges well past any sensible column width, so
+ * both sides show the same opening words and the table reads as though it is
+ * flagging identical text. Anchoring on the first difference, with a little
+ * of the matching text before it for bearings, puts the change on screen.
+ */
+function diffWindow(from: string, to: string, width = 60): { from: string; to: string } {
+  const a = from.replace(/\s+/g, " ").trim();
+  const b = to.replace(/\s+/g, " ").trim();
+
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  const start = Math.max(0, i - 15);
+
+  const cut = (text: string) =>
+    (start > 0 ? "…" : "") +
+    text.slice(start, start + width) +
+    (text.length > start + width ? "…" : "");
+
+  return { from: cut(a), to: cut(b) };
 }
 
 function RoleBadge({ role }: { role: RoleRow | undefined }) {
@@ -464,8 +459,6 @@ export default function AdminPanel({
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [importBoard, setImportBoard] = useState<"t1ho" | "ho">("t1ho");
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
-  // The changeover date. Everything before it is on the boards already.
-  const [createFrom, setCreateFrom] = useState("2026-08-10");
   // Cleared every time a plan is drawn up, so an earlier tick can't carry
   // over into a later import the user hasn't looked at.
   const [syncFields, setSyncFields] = useState<SyncField[]>([]);
@@ -493,20 +486,11 @@ export default function AdminPanel({
     setSyncFields((prev) => (on ? [...prev, field] : prev.filter((f) => f !== field)));
   }
 
-  // --- 留言拆分試算 ---
-  const [split, setSplit] = useState<ReplySplitPreview | null>(null);
-
-  async function previewSplit() {
-    setSplit(null);
-    const data = await call("/api/admin/reply-split", "GET");
-    if (data) setSplit(data as unknown as ReplySplitPreview);
-  }
-
   async function previewImport() {
     setPlan(null);
     setSyncFields([]);
     const data = await call(
-      `/api/admin/sheet-import?board=${importBoard}&createFrom=${createFrom}`,
+      `/api/admin/sheet-import?board=${importBoard}&createFrom=${CREATE_FROM}`,
       "GET"
     );
     if (data) setPlan(data as unknown as ImportPlan);
@@ -515,7 +499,7 @@ export default function AdminPanel({
   async function runImport() {
     const query = syncFields.length > 0 ? `&syncFields=${syncFields.join(",")}` : "";
     const data = await call(
-      `/api/admin/sheet-import?board=${importBoard}&createFrom=${createFrom}${query}`,
+      `/api/admin/sheet-import?board=${importBoard}&createFrom=${CREATE_FROM}${query}`,
       "POST"
     );
     setImportConfirmOpen(false);
@@ -941,21 +925,7 @@ export default function AdminPanel({
                 )}
             </div>
 
-            <div className="field-row">
-              <label htmlFor="import-from">{t(lang, "importCreateFrom")}</label>
-              <input
-                id="import-from"
-                type="date"
-                className="threshold"
-                value={createFrom}
-                disabled={busy}
-                onChange={(e) => {
-                  setCreateFrom(e.target.value);
-                  setPlan(null);
-                }}
-              />
-            </div>
-            <p className="hint">{t(lang, "importCreateFromHint")}</p>
+            <p className="hint">{t(lang, "importCreateFromHint", CREATE_FROM)}</p>
 
             {importBoard === "ho" && <p className="hint">{t(lang, "importHoNote")}</p>}
 
@@ -1183,14 +1153,17 @@ export default function AdminPanel({
                           </tr>
                         </thead>
                         <tbody>
-                          {plan.fieldChanges.slice(0, 50).map((c) => (
-                            <tr key={`${c.seq}-${c.field}`}>
-                              <td>{c.seq}</td>
-                              <td className="muted">{SYNC_FIELDS[c.field].label[lang]}</td>
-                              <td>{truncate(c.from)}</td>
-                              <td className="muted">{truncate(c.to) || "—"}</td>
-                            </tr>
-                          ))}
+                          {plan.fieldChanges.slice(0, 50).map((c) => {
+                            const w = diffWindow(c.from, c.to);
+                            return (
+                              <tr key={`${c.seq}-${c.field}`}>
+                                <td>{c.seq}</td>
+                                <td className="muted">{SYNC_FIELDS[c.field].label[lang]}</td>
+                                <td>{w.from}</td>
+                                <td className="muted">{w.to || "—"}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1203,137 +1176,6 @@ export default function AdminPanel({
             )}
           </div>
 
-          <div className="card">
-            <div className="card-head">
-              <h2>{t(lang, "splitTitle")}</h2>
-            </div>
-            <p className="hint" style={{ marginTop: 0 }}>
-              {t(lang, "splitIntro")}
-            </p>
-            <p className="hint">{t(lang, "splitRule")}</p>
-
-            <div className="field-row">
-              <button type="button" className="ghost" disabled={busy} onClick={previewSplit}>
-                {busy ? t(lang, "saving") : t(lang, "splitRun")}
-              </button>
-            </div>
-
-            {split && (
-              <>
-                <div className="archive-stat-row">
-                  <div className="archive-stat">
-                    <div className="n">{split.cellsWithReplies.toLocaleString()}</div>
-                    <div className="l">{t(lang, "splitCells")}</div>
-                  </div>
-                  <div className="archive-stat">
-                    <div className="n">{split.cellsSplit.toLocaleString()}</div>
-                    <div className="l">{t(lang, "splitWillSplit")}</div>
-                  </div>
-                  <div className="archive-stat">
-                    <div className="n">{split.entriesProduced.toLocaleString()}</div>
-                    <div className="l">{t(lang, "splitEntries")}</div>
-                  </div>
-                  <div className="archive-stat">
-                    <div className="n">{split.cellsUnsplit.toLocaleString()}</div>
-                    <div className="l">{t(lang, "splitUnsplit")}</div>
-                  </div>
-                  <div className="archive-stat">
-                    <div className="n">{split.entriesWithTime.toLocaleString()}</div>
-                    <div className="l">{t(lang, "splitWithTime")}</div>
-                  </div>
-                  <div className="archive-stat">
-                    <div className="n">{split.cellsAmbiguous.toLocaleString()}</div>
-                    <div className="l">{t(lang, "splitAmbiguous")}</div>
-                  </div>
-                </div>
-
-                {split.byYear.length > 0 && (
-                  <>
-                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
-                      {t(lang, "splitByYear")}
-                    </p>
-                    <p className="hint">{t(lang, "splitByYearHint")}</p>
-                    <div className="table-scroll" style={{ marginTop: 8 }}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>{t(lang, "splitColYear")}</th>
-                            <th>{t(lang, "splitColCells")}</th>
-                            <th>{t(lang, "splitColSplit")}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {split.byYear.map((y) => (
-                            <tr key={y.year}>
-                              <td>{y.year}</td>
-                              <td className="muted">{y.cells.toLocaleString()}</td>
-                              <td className="muted">{y.split.toLocaleString()}</td>
-                            </tr>
-                          ))}
-                          <tr>
-                            <td style={{ fontWeight: 700 }}>{t(lang, "splitRecent", split.recentFrom)}</td>
-                            <td style={{ fontWeight: 700 }}>{split.recentCells.toLocaleString()}</td>
-                            <td style={{ fontWeight: 700 }}>{split.recentSplit.toLocaleString()}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-
-                {split.samples.length > 0 && (
-                  <>
-                    <p className="hint" style={{ marginTop: 20, fontWeight: 650 }}>
-                      {t(lang, "splitSamples")}
-                    </p>
-                    {split.samples.map((sm) => (
-                      <div key={`s-${sm.seq}-${sm.date}`} className="split-sample">
-                        <div className="split-seq">
-                          {sm.seq} · {sm.date}
-                        </div>
-                        <div className="split-cols">
-                          <div>
-                            <div className="split-label">{t(lang, "splitBefore")}</div>
-                            <pre className="split-cell">{sm.cell}</pre>
-                          </div>
-                          <div>
-                            <div className="split-label">
-                              {t(lang, "splitAfter")} — {sm.entries.length}
-                            </div>
-                            {sm.entries.map((e, i) => (
-                              <div key={i} className="split-entry">
-                                <span className="split-at">{e.at ? e.at.slice(0, 16).replace("T", " ") : t(lang, "splitNoTime")}</span>
-                                <pre className="split-cell">{e.body}</pre>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {split.ambiguousSamples.length > 0 && (
-                  <>
-                    <p className="hint" style={{ marginTop: 24, fontWeight: 650 }}>
-                      {t(lang, "splitAmbiguousTitle")}
-                    </p>
-                    <p className="hint">{t(lang, "splitAmbiguousHint")}</p>
-                    {split.ambiguousSamples.map((sm) => (
-                      <div key={`a-${sm.seq}-${sm.date}`} className="split-sample">
-                        <div className="split-seq">
-                          {sm.seq} · {sm.date}
-                        </div>
-                        {sm.ambiguous.map((line, i) => (
-                          <pre key={i} className="split-cell warn">{line}</pre>
-                        ))}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-          </div>
         </>
       )}
 
