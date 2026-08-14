@@ -5,7 +5,13 @@ import { JWT } from "google-auth-library";
 // more — the boards are Supabase, and the Sheet is a source to import from.
 // A token that can't write is one less thing that can damage the sheet a
 // team is still keeping by hand during the changeover.
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
+//
+// The Drive scope reads one field, modifiedTime, and grants nothing the
+// spreadsheets scope doesn't already imply.
+const SCOPES = [
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+];
 
 export function hasServiceAccountConfig(): boolean {
   return Boolean(
@@ -49,4 +55,24 @@ export async function fetchSheetValues(spreadsheetId: string, gid?: string): Pro
     )}`,
   });
   return values.data.values ?? [];
+}
+
+/**
+ * When the spreadsheet was last touched, by anyone.
+ *
+ * Drive treats a sheet as a file, so this moves on any edit — ours or a
+ * person's — regardless of which cell or tab changed. A few hundred bytes,
+ * against the couple of megabytes a full comparison reads, which is what
+ * makes it worth asking before doing the real work.
+ *
+ * Per file, not per tab: both boards live in one spreadsheet, so an edit to
+ * either moves it. The cost of that is one board occasionally comparing when
+ * nothing of its own changed — still far less than both always comparing.
+ */
+export async function getSheetModifiedTime(spreadsheetId: string): Promise<string | null> {
+  if (!hasServiceAccountConfig()) return null;
+  const res = await getClient().request<{ modifiedTime?: string }>({
+    url: `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=modifiedTime`,
+  });
+  return res.data.modifiedTime ?? null;
 }

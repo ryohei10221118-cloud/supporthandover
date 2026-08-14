@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { CASES_TAG } from "@/lib/cacheTags";
 import { applySheetImport, sheetSourceFor } from "@/lib/sheetImport";
+import { getSheetModifiedTime } from "@/lib/sheetsApi";
+import { readSyncState, writeSyncState } from "@/lib/syncState";
 import type { SupaBoard } from "@/lib/supabaseCases";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +55,11 @@ export async function GET(req: NextRequest) {
   const rawFrom = (req.nextUrl.searchParams.get("createFrom") ?? "").trim();
   const createFrom = /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? rawFrom : undefined;
 
+  // A trigger on the sheet fires on every change, and people edit in bursts —
+  // three of them at once, a pasted block, a recalculation. Without this each
+  // of those is a full comparison. ?force=1 runs one anyway.
+  const force = req.nextUrl.searchParams.get("force") === "1";
+
   const only = req.nextUrl.searchParams.get("board");
   const boards = BOARDS.filter((b) => !only || b === only);
 
@@ -68,7 +75,20 @@ export async function GET(req: NextRequest) {
       continue;
     }
     try {
+      const source = sheetSourceFor(board)!;
+      // Read before importing, stored after: an edit made while this runs
+      // moves Drive's clock past the value we keep, so the next run sees the
+      // mismatch and picks it up instead of swallowing it.
+      const modifiedAt = await getSheetModifiedTime(source.spreadsheetId).catch(() => null);
+      const state = await readSyncState(board);
+
+      if (!force && modifiedAt && state?.sheetModifiedAt === modifiedAt) {
+        results[board] = { skipped: "unchanged", sheetModifiedAt: modifiedAt };
+        continue;
+      }
+
       const result = await applySheetImport(board, { syncFields: [], createFrom });
+      await writeSyncState(board, modifiedAt);
       results[board] = result;
       if (result.casesInserted > 0 || result.commentsInserted > 0 || result.commentsUpdated > 0) {
         wroteSomething = true;
