@@ -63,8 +63,20 @@ export async function POST(req: Request) {
     if (source.board !== "t1ho") {
       return NextResponse.json({ error: "只有 T1 HO 的案件可以轉移到 HO" }, { status: 400 });
     }
+    // Already handed over — unless the case it was handed to has since been
+    // deleted, which is how somebody undoes a handover made by mistake. Then
+    // the link is spent and this can be moved again; refusing would leave the
+    // case permanently pointing at something nobody can open.
     if (source.moved_to_case_id) {
-      return NextResponse.json({ error: "這筆案件已經轉移過了" }, { status: 409 });
+      const { data: linked, error: linkedError } = await supabase
+        .from("cases")
+        .select("id, deleted_at")
+        .eq("id", source.moved_to_case_id)
+        .maybeSingle<{ id: string; deleted_at: string | null }>();
+      if (linkedError) throw new Error(linkedError.message);
+      if (linked && !linked.deleted_at) {
+        return NextResponse.json({ error: "這筆案件已經轉移過了" }, { status: 409 });
+      }
     }
 
     const movedBy = await resolveSupabaseUserId(role.email);
@@ -98,11 +110,18 @@ export async function POST(req: Request) {
     // Claim the link before anything else can. The unique index means a
     // second request racing this one fails here rather than creating a
     // duplicate pair.
-    const { data: linked, error: linkError } = await supabase
+    // Matched on the link's current value rather than always on null: a case
+    // being moved again after its first target was deleted still carries the
+    // old id, and requiring it to be exactly the one read above keeps a second
+    // request racing this one losing, same as before.
+    const claim = supabase
       .from("cases")
       .update({ moved_to_case_id: created.id, status: MOVED_STATUS, update_date: today })
-      .eq("id", caseId)
-      .is("moved_to_case_id", null)
+      .eq("id", caseId);
+    const { data: linked, error: linkError } = await (source.moved_to_case_id
+      ? claim.eq("moved_to_case_id", source.moved_to_case_id)
+      : claim.is("moved_to_case_id", null)
+    )
       .select("id")
       .maybeSingle<{ id: string }>();
     if (linkError || !linked) {
@@ -110,6 +129,48 @@ export async function POST(req: Request) {
       // than leaving an orphan on the HO board.
       await supabase.from("cases").delete().eq("id", created.id);
       return NextResponse.json({ error: "這筆案件已經轉移過了" }, { status: 409 });
+    }
+
+    // Screenshots filed on the case itself come across. They are usually the
+    // evidence — content that says "如圖" is no use to the HO side without the
+    // image, and asking them to click back through to T1 HO for it defeats
+    // the point of handing the case over.
+    //
+    // The new rows point at the same stored file rather than a copy of it:
+    // nothing in the app deletes storage for case-level attachments (only a
+    // comment delete removes files, and those rows are comment-level), so one
+    // file with two rows is safe and costs nothing. Screenshots posted inside
+    // the T1 HO thread stay there with the thread.
+    const { data: shots, error: shotsError } = await supabase
+      .from("attachments")
+      .select("file_name, storage_path, external_url, size_bytes")
+      .eq("case_id", caseId)
+      .is("comment_id", null)
+      .returns<
+        {
+          file_name: string;
+          storage_path: string | null;
+          external_url: string | null;
+          size_bytes: number | null;
+        }[]
+      >();
+    if (shotsError) {
+      console.error("move-to-ho attachment copy failed", shotsError.message);
+    } else if ((shots ?? []).length > 0) {
+      const { error } = await supabase.from("attachments").insert(
+        (shots ?? []).map((s) => ({
+          case_id: created.id,
+          comment_id: null,
+          file_name: s.file_name,
+          storage_path: s.storage_path,
+          external_url: s.external_url,
+          size_bytes: s.size_bytes,
+          uploaded_by: movedBy,
+        }))
+      );
+      // The handover itself already succeeded — a missing screenshot is worth
+      // logging, not worth failing the move and leaving a half-made pair.
+      if (error) console.error("move-to-ho attachment copy failed", error.message);
     }
 
     // One comment for provenance; the rest of the thread stays on T1 HO so

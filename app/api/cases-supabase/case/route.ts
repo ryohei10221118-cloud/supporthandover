@@ -46,11 +46,24 @@ export async function DELETE(req: Request) {
 
     // The HO case would be left with a T1 HO case pointing at it that nobody
     // can see — unpick the handover on that board first, then delete.
+    //
+    // "Unpick it" means deleting the HO case, and once that's done the link is
+    // spent: still asking for the HO side to be dealt with is a dead end, with
+    // the T1 HO case undeletable and the thing it points at already gone. So
+    // the link only blocks while the case it points at is still there.
     if (target.moved_to_case_id) {
-      return NextResponse.json(
-        { error: "這筆案件已經轉移到 HO，請先處理 HO 那一筆再刪除" },
-        { status: 409 }
-      );
+      const { data: linked, error: linkedError } = await supabase
+        .from("cases")
+        .select("id, deleted_at")
+        .eq("id", target.moved_to_case_id)
+        .maybeSingle<{ id: string; deleted_at: string | null }>();
+      if (linkedError) throw new Error(linkedError.message);
+      if (linked && !linked.deleted_at) {
+        return NextResponse.json(
+          { error: "這筆案件已經轉移到 HO，請先處理 HO 那一筆再刪除" },
+          { status: 409 }
+        );
+      }
     }
 
     const deletedBy = await resolveSupabaseUserId(role.email);

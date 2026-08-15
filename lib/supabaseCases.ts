@@ -465,6 +465,9 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
         .from("cases")
         .select("id, seq")
         .in("id", targetIds.slice(i, i + CHUNK))
+        // A link whose other end has been deleted is spent — left in, the
+        // badge offers to open a case nobody can see.
+        .is("deleted_at", null)
         .returns<{ id: string; seq: string }[]>();
       if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
       for (const row of data ?? []) linkedSeqById.set(row.id, row.seq);
@@ -475,6 +478,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
         .from("cases")
         .select("seq, moved_to_case_id")
         .in("moved_to_case_id", caseIds.slice(i, i + CHUNK))
+        .is("deleted_at", null)
         .returns<{ seq: string; moved_to_case_id: string }[]>();
       if (error) throw new Error(`Supabase 讀取 cases 失敗: ${error.message}`);
       for (const row of data ?? []) movedFromSeqByTarget.set(row.moved_to_case_id, row.seq);
