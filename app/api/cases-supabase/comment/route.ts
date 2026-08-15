@@ -128,7 +128,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "只能刪除自己的留言" }, { status: 403 });
     }
 
-    // Screenshots first: the rows point at storage objects, and dropping the
+    // Screenshots too: the rows point at storage objects, and dropping the
     // rows without the files leaves them paid for and unreachable.
     const { data: shots, error: shotsError } = await supabase
       .from("attachments")
@@ -137,16 +137,32 @@ export async function DELETE(req: Request) {
       .returns<{ id: string; storage_path: string | null }[]>();
     if (shotsError) throw new Error(shotsError.message);
 
-    const paths = (shots ?? []).map((s) => s.storage_path).filter((p): p is string => !!p);
-    if (paths.length > 0) {
-      const { error: storageError } = await supabase.storage.from(BUCKET).remove(paths);
-      // The rows still go; an orphaned file costs storage, an orphaned row
-      // shows up as a broken image on the board.
-      if (storageError) console.error("comment delete: storage remove failed", storageError.message);
-    }
     if ((shots ?? []).length > 0) {
       const { error } = await supabase.from("attachments").delete().eq("comment_id", commentId);
       if (error) throw new Error(error.message);
+    }
+
+    // Rows first, then only the files nothing else points at. A screenshot
+    // carried onto the HO board by a handover is a second row against the
+    // same stored object, and removing the file here would blank an image on
+    // a case that has nothing to do with this comment. Asking after the rows
+    // are gone is what makes a hit mean "somebody else still needs this".
+    const paths = (shots ?? []).map((s) => s.storage_path).filter((p): p is string => !!p);
+    if (paths.length > 0) {
+      const { data: stillUsed, error: usedError } = await supabase
+        .from("attachments")
+        .select("storage_path")
+        .in("storage_path", paths)
+        .returns<{ storage_path: string | null }[]>();
+      if (usedError) throw new Error(usedError.message);
+      const keep = new Set((stillUsed ?? []).map((r) => r.storage_path));
+      const orphaned = paths.filter((p) => !keep.has(p));
+      if (orphaned.length > 0) {
+        const { error: storageError } = await supabase.storage.from(BUCKET).remove(orphaned);
+        // The rows have already gone; a leftover file costs storage, whereas
+        // a leftover row shows up as a broken image on the board.
+        if (storageError) console.error("comment delete: storage remove failed", storageError.message);
+      }
     }
 
     const { error: historyError } = await supabase

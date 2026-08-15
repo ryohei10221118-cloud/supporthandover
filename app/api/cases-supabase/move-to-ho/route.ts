@@ -131,21 +131,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "這筆案件已經轉移過了" }, { status: 409 });
     }
 
-    // Screenshots filed on the case itself come across. They are usually the
-    // evidence — content that says "如圖" is no use to the HO side without the
-    // image, and asking them to click back through to T1 HO for it defeats
-    // the point of handing the case over.
+    // Every screenshot on the case comes across, the ones posted inside the
+    // thread included. They are usually the evidence — content that says
+    // "如圖" is no use to the HO side without the image, and most images are
+    // attached to a reply rather than to the case itself, so taking only the
+    // case's own would carry almost nothing.
     //
-    // The new rows point at the same stored file rather than a copy of it:
-    // nothing in the app deletes storage for case-level attachments (only a
-    // comment delete removes files, and those rows are comment-level), so one
-    // file with two rows is safe and costs nothing. Screenshots posted inside
-    // the T1 HO thread stay there with the thread.
+    // They arrive as the HO case's own screenshots rather than as a copied
+    // thread: the replies stay on T1 HO, where there is one copy of them and
+    // one place they get answered.
+    //
+    // The new rows point at the same stored file rather than a copy of it, so
+    // this costs no storage. Deleting a comment is the one thing that removes
+    // a file, and it now leaves alone any file another row still points at.
     const { data: shots, error: shotsError } = await supabase
       .from("attachments")
       .select("file_name, storage_path, external_url, size_bytes")
       .eq("case_id", caseId)
-      .is("comment_id", null)
       .returns<
         {
           file_name: string;

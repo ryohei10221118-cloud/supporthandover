@@ -992,7 +992,10 @@ export default function SupaBoard({
       board === "t1ho" &&
       field === "status" &&
       value.trim().toLowerCase() === "move to ho" &&
-      !c.movedToCaseId
+      // movedToSeq, not movedToCaseId: once the HO case has been deleted the
+      // link is spent and the case can be handed over again — the same rule
+      // the server applies. The id is still on the row either way.
+      !c.movedToSeq
     ) {
       setMoveError(null);
       setMoveTarget(c);
