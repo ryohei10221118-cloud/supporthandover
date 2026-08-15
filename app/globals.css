@@ -921,28 +921,50 @@ button.primary:disabled {
   margin-bottom: 20px;
 }
 
+/*
+ * Four cards, always on one row.
+ *
+ * auto-fit with a 140px floor dropped the fourth card onto a row of its own
+ * as soon as the window narrowed — spending a whole row of height at exactly
+ * the moment height was scarcest, and pushing the table people narrow the
+ * window to read further down the page. Every user of .summary has four
+ * cards, so the count can just be stated.
+ */
 .summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(6px, 0.8vw, 12px);
+  margin-bottom: clamp(12px, 1.7vw, 24px);
 }
 
+/* The cards shrink with the window rather than holding their size: a narrow
+   window is one somebody narrowed to see more of the board. */
 .stat {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: clamp(8px, 1vw, 14px) clamp(9px, 1.1vw, 16px);
+  min-width: 0;
 }
 
 .stat .value {
-  font-size: 1.6rem;
+  font-size: clamp(1.1rem, 1.9vw, 1.6rem);
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .stat .label {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: clamp(0.68rem, 0.9vw, 0.8rem);
+  line-height: 1.3;
+}
+
+/* Below this the four are too narrow to read a label in; two rows of two is
+   the lesser cost, and at this width the table is scrolling anyway. */
+@media (max-width: 520px) {
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .stat.overdue .value {
