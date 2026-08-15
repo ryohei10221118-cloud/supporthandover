@@ -809,8 +809,16 @@ function MultiSelect({
 
   return (
     <div className="multiselect" ref={rootRef}>
-      <button type="button" className="multiselect-summary" onClick={() => setOpen((o) => !o)}>
-        {summary} {open ? "▴" : "▾"}
+      {/* The caret is drawn in CSS, not typed here: the ▾ glyph rendered at a
+          different size and weight from the arrow the browser puts on the
+          date <select>s next to it. */}
+      <button
+        type="button"
+        className={`multiselect-summary${open ? " open" : ""}`}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {summary}
       </button>
       {open && (
         <div className="multiselect-menu">
