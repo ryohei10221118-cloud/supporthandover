@@ -3060,6 +3060,19 @@ select.threshold:focus {
 
 /* An opt-in that overwrites data, so it reads as a decision rather than a
    stray tickbox at the end of a list. */
+/* Header checkbox that ticks every field at once. */
+.sync-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.sync-all input {
+  margin: 0;
+  cursor: pointer;
+}
+
 .check-row {
   display: inline-flex;
   align-items: center;

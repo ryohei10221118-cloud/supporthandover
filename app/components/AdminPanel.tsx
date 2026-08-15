@@ -60,6 +60,12 @@ const STRINGS = {
   importFieldDiff: { zh: "欄位不一致", en: "Fields differ" },
   importUpdatedComments: { zh: "將更新的回覆", en: "Replies to update" },
   importTooOld: { zh: "太舊、不建立", en: "Too old to create" },
+  importIncomplete: { zh: "還沒寫內容", en: "Nothing written yet" },
+  importIncompleteHint: {
+    zh: "Sheet 一開新的一行就會自動填好序列跟日期，所以只填了 OP、內容還空著的那幾列，看起來也像完整的案件。這種先不建立 —— 等內容寫好，下一次同步就會進來。",
+    en: "The sheet fills in the number and date the moment a line is started, so a row with only the OP typed still looks complete. Those wait: once there is something written, the next sync brings them in.",
+  },
+  importSyncAll: { zh: "全選", en: "All" },
   importCreateFromHint: {
     zh: (d: string) =>
       `只有 ${d} 之後的案件會被建立。更早的案件在換到工具時就都搬過來了，這條線之下還配不到的，多半是 Sheet 很久以前重複用過的號碼 —— 建立它們只會生出一堆存檔的副本。舊資料還是會比對，所以還在跑的案件，新回覆跟欄位變更照樣收得到。`,
@@ -926,6 +932,7 @@ export default function AdminPanel({
             </div>
 
             <p className="hint">{t(lang, "importCreateFromHint", CREATE_FROM)}</p>
+            <p className="hint">{t(lang, "importIncompleteHint")}</p>
 
             {importBoard === "ho" && <p className="hint">{t(lang, "importHoNote")}</p>}
 
@@ -947,6 +954,10 @@ export default function AdminPanel({
                   <div className="archive-stat">
                     <div className="n">{plan.updatedComments.length.toLocaleString()}</div>
                     <div className="l">{t(lang, "importUpdatedComments")}</div>
+                  </div>
+                  <div className="archive-stat">
+                    <div className="n">{plan.incomplete.toLocaleString()}</div>
+                    <div className="l">{t(lang, "importIncomplete")}</div>
                   </div>
                   <div className="archive-stat">
                     <div className="n">{plan.tooOldToCreate.toLocaleString()}</div>
@@ -1115,7 +1126,28 @@ export default function AdminPanel({
                           <tr>
                             <th>{t(lang, "importColField")}</th>
                             <th>{t(lang, "importColCount")}</th>
-                            <th style={{ textAlign: "center" }}>{t(lang, "importColSync")}</th>
+                            <th style={{ textAlign: "center" }}>
+                              <label className="sync-all">
+                                <input
+                                  type="checkbox"
+                                  checked={diffCounts.length > 0 && syncFields.length === diffCounts.length}
+                                  // Some but not all ticked reads as neither on
+                                  // nor off, which is what it is.
+                                  ref={(el) => {
+                                    if (el) {
+                                      el.indeterminate =
+                                        syncFields.length > 0 && syncFields.length < diffCounts.length;
+                                    }
+                                  }}
+                                  disabled={busy}
+                                  aria-label={t(lang, "importSyncAll")}
+                                  onChange={(e) =>
+                                    setSyncFields(e.target.checked ? diffCounts.map((d) => d.field) : [])
+                                  }
+                                />
+                                <span>{t(lang, "importColSync")}</span>
+                              </label>
+                            </th>
                           </tr>
                         </thead>
                         <tbody>

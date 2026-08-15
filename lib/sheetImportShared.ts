@@ -124,6 +124,12 @@ export interface ImportPlan {
   updatedComments: ImportPlanCommentUpdate[];
   /** Rows too old to create a case for, per createFrom. */
   tooOldToCreate: number;
+  /**
+   * Rows with a number and a date but nothing written in them — a line
+   * somebody has started and not finished. They come in on a later run, once
+   * there is something to bring.
+   */
+  incomplete: number;
   /** Sequence numbers the sheet reuses, and what each row resolves to. */
   duplicates: ImportPlanDuplicate[];
   /**

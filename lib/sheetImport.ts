@@ -581,6 +581,7 @@ export async function planSheetImport(
     newComments: [],
     updatedComments: [],
     tooOldToCreate: 0,
+    incomplete: 0,
     duplicates: resolved.duplicates,
     fieldChanges: [],
     unchanged: 0,
@@ -588,6 +589,10 @@ export async function planSheetImport(
   };
 
   for (const { row, seq } of resolved.created) {
+    if (!row.content.trim()) {
+      plan.incomplete += 1;
+      continue;
+    }
     if (!mayCreate(row, options.createFrom)) {
       plan.tooOldToCreate += 1;
       continue;
@@ -645,6 +650,17 @@ export async function planSheetImport(
  * before the cutoff are still matched; only creation is held back.
  */
 function mayCreate(row: MappedRow, createFrom: string | undefined): boolean {
+  // A row with nothing written in it yet isn't a case. The sheet fills the
+  // number and the date the moment somebody starts a line, so a half-typed
+  // entry already looks complete enough to import — and did, arriving as a
+  // blank case with only the OP filled in. Worse, once it is on the board the
+  // rest of the row lands as *field differences* rather than as the case
+  // itself, so it stays blank until somebody opts into syncing.
+  //
+  // Waiting for content costs nothing: the row comes in on the next run, and
+  // with the sheet trigger that is seconds after the sentence is finished.
+  if (!row.content.trim()) return false;
+
   if (!createFrom) return true;
   const date = toDateOrNull(row.createDate);
   // A row with no readable date is recent far more often than not — it's
