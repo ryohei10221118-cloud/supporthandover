@@ -183,10 +183,12 @@ type ExistingCase = { id: string; seq: string } & Record<string, string | null>;
  * leaving it out silently made every date comparison fail: nothing matched,
  * and every sheet row looked like a case the board had never seen.
  */
-const RESOLVER_COLUMNS = ["id", "seq", "create_date"] as const;
+const RESOLVER_COLUMNS = ["id", "seq", "create_date", "deleted_at"] as const;
 
-// The seq map keeps deleted cases too: their number is still taken, and
-// re-creating one the sheet still lists would undo the deletion silently.
+// Deleted cases stay in the index: a row still sitting in the sheet has to
+// find the case it was deleted from, or the next import would recreate it and
+// quietly undo the deletion. What they no longer do is hold their number —
+// see the allocation below.
 const EXISTING_COLUMNS = [
   ...RESOLVER_COLUMNS,
   ...SYNC_FIELD_KEYS.map((k) => SYNC_FIELDS[k].column),
@@ -246,7 +248,11 @@ async function loadExisting(board: SupaBoard): Promise<ExistingIndex> {
   const taken = new Set<string>();
   for (const c of cases) {
     const seq = (c.seq ?? "").trim();
-    taken.add(seq);
+    // A deleted case doesn't hold its number. If the sheet later reuses it for
+    // something else, that case deserves the plain number rather than a
+    // suffixed one — and the unique index only covers live rows, so the two
+    // can sit side by side.
+    if (!c.deleted_at) taken.add(seq);
     const key = baseSeq(seq);
     const list = byBase.get(key);
     if (list) list.push(c);
@@ -433,7 +439,7 @@ interface Resolution {
  * a case silently goes missing, and renumbering the sheet by hand across
  * hundreds of historic rows is worse than the problem.
  */
-function resolveRows(rows: MappedRow[], existing: ExistingIndex): Resolution {
+export function resolveRows(rows: MappedRow[], existing: ExistingIndex): Resolution {
   const groups = new Map<string, MappedRow[]>();
   let blank = 0;
   for (const row of rows) {
@@ -459,7 +465,14 @@ function resolveRows(rows: MappedRow[], existing: ExistingIndex): Resolution {
     // The ordinary case: one row, one case, nothing to disambiguate. Pairing
     // it without consulting the date matters — dates get corrected on the
     // board, and a corrected date shouldn't turn a case into a new one.
-    if (group.length === 1 && candidates.length === 1) {
+    //
+    // Not when the only candidate is deleted, though. Then the question is
+    // which of two very different things happened: the row is still the case
+    // that was deleted (leave it deleted), or the sheet has since reused the
+    // number for something else (a real case, which has to come in). Only the
+    // date and the text can tell those apart, so the shortcut is skipped and
+    // the evidence below decides.
+    if (group.length === 1 && candidates.length === 1 && !candidates[0].deleted_at) {
       resolution.matched.push({ row: group[0], match: candidates[0] });
       assigned.set(group[0], { seq: candidates[0].seq, alreadyOnBoard: true });
     } else {
@@ -611,6 +624,14 @@ export async function planSheetImport(
   }
 
   for (const { row, match } of resolved.matched) {
+    // A case deleted here stays deleted. Its row is still paired with it, so
+    // it can't come back as a new case — but nothing more is written into
+    // something somebody deliberately dropped.
+    if (match.deleted_at) {
+      plan.unchanged += 1;
+      continue;
+    }
+
     let touched = false;
 
     if (row.reply) {
@@ -703,6 +724,7 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   }
 
   for (const { row, match } of resolved.matched) {
+    if (match.deleted_at) continue; // stays deleted — see planSheetImport
     const rowDate = rowDateOf(row);
     if (row.reply) {
       const relation = replyRelation(row.reply, existingBefore.commentsByCase.get(match.id) ?? []);
@@ -758,9 +780,16 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   // exact number each reply was filed under, suffix included — the base would
   // pick the wrong one of a reused number's several cases.
   const after = await loadExisting(board);
+  // A freed number can be held by a deleted case and a live one at the same
+  // time; the reply belongs to the live one.
   const byExactSeq = new Map<string, ExistingCase>();
   for (const list of after.byBase.values()) {
-    for (const c of list) byExactSeq.set((c.seq ?? "").trim(), c);
+    for (const c of list) {
+      const key = (c.seq ?? "").trim();
+      const held = byExactSeq.get(key);
+      if (held && !held.deleted_at) continue;
+      byExactSeq.set(key, c);
+    }
   }
   const commentRows = replies
     .map((r) => {
