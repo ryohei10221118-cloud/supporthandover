@@ -724,8 +724,6 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
         field,
         from: diff.to, // the value being replaced is the board's
         to: diff.from,
-        date: rowDate,
-        at: sheetTimestamp(rowDate),
       });
     }
   }
@@ -835,8 +833,6 @@ interface FieldUpdate {
   from: string;
   /** The sheet's value, which is what gets written. */
   to: string;
-  date: string;
-  at: string;
 }
 
 /**
@@ -848,6 +844,15 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
   if (updates.length === 0) return 0;
   const supabase = getSupabaseClient();
 
+  // Stamped with the moment the import noticed, not with the sheet's date.
+  //
+  // Unlike a reply — which carries its own time in the text and really was
+  // written that day — a cell that changed value says nothing about when. The
+  // only thing anybody actually knows is when it was picked up, and dating it
+  // from the row puts a change at 08:00 on a morning nothing happened.
+  const noticedAt = new Date().toISOString();
+  const today = noticedAt.slice(0, 10);
+
   // History first: if the update below fails we're left with a note about a
   // change that didn't happen, which is recoverable. The other order loses
   // the previous value for good.
@@ -856,9 +861,7 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
     field_name: u.field,
     previous_value: u.from,
     edited_by: editorId,
-    // Dated from the sheet, like the comments — the change happened when the
-    // sheet says it did, not when somebody got round to running the import.
-    edited_at: u.at,
+    edited_at: noticedAt,
   }));
   for (let i = 0; i < historyRows.length; i += 200) {
     const { error } = await supabase.from("field_edit_history").insert(historyRows.slice(i, i + 200));
@@ -868,10 +871,10 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
   // One statement per distinct (field, value, date) rather than per case.
   // Priority over a few hundred rows is four values and a handful of dates,
   // so this collapses to a few round trips instead of hundreds.
-  const groups = new Map<string, { field: SyncField; value: string; date: string; ids: string[] }>();
+  const groups = new Map<string, { field: SyncField; value: string; ids: string[] }>();
   for (const u of updates) {
-    const key = `${u.field}\u0000${u.to}\u0000${u.date}`;
-    const group = groups.get(key) ?? { field: u.field, value: u.to, date: u.date, ids: [] };
+    const key = `${u.field}\u0000${u.to}`;
+    const group = groups.get(key) ?? { field: u.field, value: u.to, ids: [] };
     group.ids.push(u.id);
     groups.set(key, group);
   }
@@ -881,7 +884,7 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
     for (let i = 0; i < group.ids.length; i += 200) {
       const { data, error } = await supabase
         .from("cases")
-        .update({ [SYNC_FIELDS[group.field].column]: group.value, update_date: group.date })
+        .update({ [SYNC_FIELDS[group.field].column]: group.value, update_date: today })
         .in("id", group.ids.slice(i, i + 200))
         .select("id")
         .returns<{ id: string }[]>();
