@@ -12,6 +12,7 @@ import type {
 } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
+import { mergeHistoryEntries, type MergeableEntry } from "@/lib/historyMerge";
 import ImageLightbox, { isViewableImage } from "./ImageLightbox";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
 import Modal from "./Modal";
@@ -1555,13 +1556,16 @@ export default function SupaBoard({
   // posted and edited. Deliberately no before/after values — those live on
   // each field's own marker.
   function rowHistory(c: SupaCaseRow): HistoryEntry[] {
-    const entries: (HistoryEntry & { at: string })[] = c.fieldEdits.map((e) => {
+    // `kind` is what keeps the merge below from running a field change into a
+    // comment that happens to share its second — those are separate events.
+    const entries: MergeableEntry[] = c.fieldEdits.map((e) => {
       const col = FIELD_COLUMN[e.field];
       return {
         editor: displayNameFromEmail(e.editorEmail),
         when: formatHistoryTimestamp(e.editedAt),
         text: col ? COLUMN_LABELS[col][board][lang] || e.field : e.field,
         at: e.editedAt,
+        kind: "field",
       };
     });
     for (const cm of c.comments) {
@@ -1570,6 +1574,7 @@ export default function SupaBoard({
         when: formatHistoryTimestamp(cm.createdAt),
         text: t(lang, "commentAdded"),
         at: cm.createdAt,
+        kind: "comment",
       });
       for (const ed of cm.edits) {
         entries.push({
@@ -1577,11 +1582,12 @@ export default function SupaBoard({
           when: formatHistoryTimestamp(ed.editedAt),
           text: t(lang, "commentEdited"),
           at: ed.editedAt,
+          kind: "comment",
         });
       }
     }
     entries.sort((a, b) => a.at.localeCompare(b.at));
-    return entries.map(({ editor, when, text }) => ({ editor, when, text }));
+    return mergeHistoryEntries(entries, lang);
   }
 
   function renderCell(colKey: ColumnKey, c: SupaCaseRow, rowKey: string): ReactNode {
