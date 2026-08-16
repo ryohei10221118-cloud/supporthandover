@@ -1019,15 +1019,6 @@ button.primary:disabled {
   font-size: 0.85rem;
 }
 
-.date-range select {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.85rem;
-}
-
 .update-banner {
   display: flex;
   align-items: center;
@@ -1093,6 +1084,52 @@ button.primary:disabled {
   background: var(--bg);
 }
 
+/*
+ * A one-of-many row, in the same panel the multi-select's checkboxes use.
+ *
+ * A <button> rather than a radio: only one can be chosen and choosing closes
+ * the menu, so a radio would leave a control sitting there restating what
+ * just happened. The tick marks the current one, and its space is reserved
+ * on every row so the labels stay in a column.
+ */
+.single-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.single-option::before {
+  content: "✓";
+  width: 1em;
+  color: var(--accent);
+  visibility: hidden;
+}
+
+.single-option.selected::before {
+  visibility: visible;
+}
+
+.single-option.selected {
+  font-weight: 600;
+}
+
+/* Hover and keyboard arrive at the same state, so arrowing down the list
+   looks like running the cursor down it. */
+.single-option.active {
+  background: var(--bg);
+}
+
 .result-count {
   align-self: center;
   color: var(--text-muted);
@@ -1123,18 +1160,16 @@ button.primary:disabled {
 /*
  * One shape for every filter control.
  *
- * They already shared a border, a radius and a font size, but a native
- * <select> lays itself out to its own internal metrics and came out a couple
- * of pixels taller than the buttons beside it — enough to read as "these
- * don't belong together" once they sat on two lines. An explicit height and
- * one vertical centring rule settles all of them.
+ * They already shared a border, a radius and a font size, but each type of
+ * control sized itself to its own content and they came out a pixel or two
+ * apart — enough to read as "these don't belong together" once the row wrapped
+ * onto two lines. An explicit height settles all of them at once.
  *
  * Keyed on the controls rather than on .filters, because the date filter also
  * appears on the dashboard, where it should look the same.
  */
 .multiselect-summary,
 .range-picker-trigger,
-.date-range select,
 .filters .refresh-btn,
 .filters input[type="text"] {
   height: 34px;
@@ -1144,19 +1179,16 @@ button.primary:disabled {
 }
 
 /*
- * And one caret.
+ * And one caret, drawn here rather than typed into the button.
  *
- * The browser draws its own arrow on a <select>, at its own size and weight,
- * which is why the two date controls didn't match the four beside them.
- * Turning that off and painting the same chevron on both is the only way to
- * get one shape — a <select> can't carry a pseudo-element, so it goes on as
- * a background image rather than as ::after.
+ * A ▾ glyph renders at whatever size and weight the text font gives it, which
+ * never matched the arrow the browser drew on the date <select>s next to it.
+ * Those are a custom dropdown now, so both ends of the row use this one.
  *
  * The stroke is a fixed mid grey rather than currentColor, which a background
  * image can't read: it holds up against both the light and the dark surface.
  */
-.multiselect-summary,
-.date-range select {
+.multiselect-summary {
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");

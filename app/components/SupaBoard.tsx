@@ -120,6 +120,17 @@ const HO_STATUS_ORDER = ["follow up", "procedure", "note", "done", "closed for u
 
 const COMPLETED_LABEL = "已完成";
 
+/**
+ * Status values that don't get their own line in the status filter.
+ *
+ * "（未填）" isn't a state anybody works in — it's text that arrived in the
+ * sheet's status column years ago and now only sits on old cases, so offering
+ * it alongside pending / Follow up made the filter list read as though it
+ * were a fifth thing to triage. The cases keep the value and still show on
+ * the board; it just isn't something to filter by.
+ */
+const HIDDEN_STATUSES = new Set(["（未填）", "(未填)"]);
+
 function t1hoStatusCategory(status: string): string {
   const trimmed = status.trim();
   const key = trimmed.toLowerCase();
@@ -1368,7 +1379,11 @@ export default function SupaBoard({
   const statuses = useMemo(() => {
     const order = board === "t1ho" ? T1HO_STATUS_ORDER : HO_STATUS_ORDER;
     const unique = Array.from(
-      new Set(cases.map((c) => (board === "t1ho" ? t1hoStatusCategory(c.status) : c.status.trim())).filter(Boolean))
+      new Set(
+        cases
+          .map((c) => (board === "t1ho" ? t1hoStatusCategory(c.status) : c.status.trim()))
+          .filter((s) => s && !HIDDEN_STATUSES.has(s))
+      )
     );
     return unique.sort((a, b) => {
       const ia = order.indexOf(a.toLowerCase());

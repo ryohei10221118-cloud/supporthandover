@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SingleSelect } from "./SingleSelect";
 
 export type DatePreset = "all" | "7d" | "30d" | "month" | "lastmonth" | "custom";
 export type DateType = "create" | "update";
@@ -138,22 +139,28 @@ export function DateRangeFilter({
     <div className="date-range">
       {!hideSelects && (
         <>
-          <select
+          <SingleSelect<DateType>
             value={dateType}
-            onChange={(e) => onDateTypeChange(e.target.value as DateType)}
-            aria-label={L("dateTypeCreate")}
-          >
-            <option value="create">{L("dateTypeCreate")}</option>
-            <option value="update">{L("dateTypeUpdate")}</option>
-          </select>
-          <select value={preset} onChange={(e) => onPresetChange(e.target.value as DatePreset)}>
-            <option value="all">{L("all")}</option>
-            <option value="7d">{L("d7")}</option>
-            <option value="30d">{L("d30")}</option>
-            <option value="month">{L("month")}</option>
-            <option value="lastmonth">{L("lastmonth")}</option>
-            <option value="custom">{L("custom")}</option>
-          </select>
+            onChange={onDateTypeChange}
+            ariaLabel={L("dateTypeCreate")}
+            options={[
+              { value: "create", label: L("dateTypeCreate") },
+              { value: "update", label: L("dateTypeUpdate") },
+            ]}
+          />
+          <SingleSelect<DatePreset>
+            value={preset}
+            onChange={onPresetChange}
+            ariaLabel={L("all")}
+            options={[
+              { value: "all", label: L("all") },
+              { value: "7d", label: L("d7") },
+              { value: "30d", label: L("d30") },
+              { value: "month", label: L("month") },
+              { value: "lastmonth", label: L("lastmonth") },
+              { value: "custom", label: L("custom") },
+            ]}
+          />
         </>
       )}
       {preset === "custom" && (
