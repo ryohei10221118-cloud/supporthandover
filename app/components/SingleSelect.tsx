@@ -8,28 +8,39 @@ export interface SingleSelectOption<T extends string> {
 }
 
 /**
- * A one-of-many dropdown that looks like the rest of the filter row.
+ * A one-of-many dropdown, used everywhere a native <select> used to be.
  *
- * The date filters were native <select>s. A <select>'s closed state can be
- * restyled, but the list it drops down is drawn by the operating system and
- * can't be — so next to the multi-selects' own panels it read as a control
- * from somewhere else entirely. This is the same button and the same panel
- * the multi-selects use, with one option selectable instead of several.
+ * A <select>'s closed state can be restyled, but the list it drops down is
+ * drawn by the operating system and can't be — so next to this app's own
+ * panels it read as a control from somewhere else. This is the same button
+ * and the same panel the multi-select filters use, with one option
+ * selectable instead of several.
  *
- * Keyboard handling is the part a <select> gave away for free, so it's put
- * back explicitly: arrows move through the options, Enter picks, Escape
- * closes and returns focus to the button.
+ * Keyboard handling is what a <select> gave for free, so it's put back
+ * explicitly: arrows move through the options, Enter picks, Escape closes and
+ * returns focus to the button. `id` goes on the button so an existing
+ * <label htmlFor> still points at something — a button is labelable.
  */
 export function SingleSelect<T extends string>({
   value,
   options,
   onChange,
+  id,
+  className,
   ariaLabel,
+  disabled,
+  block,
 }: {
   value: T;
   options: readonly SingleSelectOption<T>[];
   onChange: (next: T) => void;
+  id?: string;
+  /** Goes on the button, so a caller's existing sizing class still applies. */
+  className?: string;
   ariaLabel?: string;
+  disabled?: boolean;
+  /** Fills its column, the way a form field does. */
+  block?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -59,6 +70,7 @@ export function SingleSelect<T extends string>({
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
+    if (disabled) return;
     if (e.key === "Escape") {
       setOpen(false);
       buttonRef.current?.focus();
@@ -79,19 +91,21 @@ export function SingleSelect<T extends string>({
       setActive((i) => (i - 1 + options.length) % options.length);
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      pick(options[active].value);
+      if (options.length > 0) pick(options[active].value);
     }
   }
 
   return (
-    <div className="multiselect" ref={rootRef} onKeyDown={onKeyDown}>
+    <div className={`single-select${block ? " block" : ""}`} ref={rootRef} onKeyDown={onKeyDown}>
       <button
         ref={buttonRef}
+        id={id}
         type="button"
-        className={`multiselect-summary${open ? " open" : ""}`}
+        className={`select-trigger${open ? " open" : ""}${className ? ` ${className}` : ""}`}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
         {current?.label ?? ""}

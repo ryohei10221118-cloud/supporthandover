@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
+import { SingleSelect } from "./SingleSelect";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 import {
   PERMISSION_GROUPS,
@@ -604,18 +605,14 @@ export default function AdminPanel({
                       <td className="muted">{u.addedAt ? u.addedAt.slice(0, 10) : "—"}</td>
                       <td>
                         <div className="row-actions">
-                          <select
+                          <SingleSelect
                             className="role-select"
+                            ariaLabel={u.email}
                             value={u.roleKey}
                             disabled={busy}
-                            onChange={(e) => changeUserRole(u, e.target.value)}
-                          >
-                            {roles.map((r) => (
-                              <option key={r.roleKey} value={r.roleKey}>
-                                {r.label}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(next) => changeUserRole(u, next)}
+                            options={roles.map((r) => ({ value: r.roleKey, label: r.label }))}
+                          />
                           <button
                             type="button"
                             className="icon-btn"
@@ -647,13 +644,12 @@ export default function AdminPanel({
                 }}
                 placeholder={t(lang, "addEmailPh")}
               />
-              <select className="role-select" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
-                {roles.map((r) => (
-                  <option key={r.roleKey} value={r.roleKey}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
+              <SingleSelect
+                className="role-select"
+                value={newUserRole}
+                onChange={setNewUserRole}
+                options={roles.map((r) => ({ value: r.roleKey, label: r.label }))}
+              />
               <button type="button" className="primary" onClick={addUser} disabled={busy || !newEmail.trim()}>
                 {busy ? t(lang, "saving") : t(lang, "addPerson")}
               </button>
@@ -904,19 +900,20 @@ export default function AdminPanel({
 
             <div className="field-row">
               <label htmlFor="import-board">{t(lang, "importBoard")}</label>
-              <select
+              <SingleSelect
                 id="import-board"
                 className="role-select"
                 value={importBoard}
                 disabled={busy}
-                onChange={(e) => {
-                  setImportBoard(e.target.value as "t1ho" | "ho");
+                onChange={(next) => {
+                  setImportBoard(next as "t1ho" | "ho");
                   setPlan(null);
                 }}
-              >
-                <option value="t1ho">T1 HO</option>
-                <option value="ho">HO</option>
-              </select>
+                options={[
+                  { value: "t1ho", label: "T1 HO" },
+                  { value: "ho", label: "HO" },
+                ]}
+              />
               <button type="button" className="ghost" disabled={busy} onClick={previewImport}>
                 {busy ? t(lang, "saving") : t(lang, "importPreview")}
               </button>
@@ -1219,19 +1216,14 @@ export default function AdminPanel({
             </div>
             <div className="field-row">
               <label htmlFor="archive-threshold">{t(lang, "archiveThreshold")}</label>
-              <select
+              <SingleSelect
                 id="archive-threshold"
                 className="threshold"
-                value={archive.thresholdMonths}
+                value={String(archive.thresholdMonths)}
                 disabled={busy}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-              >
-                {[3, 6, 12].map((m) => (
-                  <option key={m} value={m}>
-                    {t(lang, "months", m)}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setThreshold(Number(next))}
+                options={[3, 6, 12].map((m) => ({ value: String(m), label: t(lang, "months", m) }))}
+              />
             </div>
             <div className="archive-stat-row">
               <div className="archive-stat">

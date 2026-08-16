@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import Modal from "./Modal";
+import { SingleSelect } from "./SingleSelect";
 import type { OptionLists } from "@/lib/optionLists";
 
 type Lang = "zh" | "en";
@@ -168,16 +169,11 @@ export default function NewCaseModal({
     }
   }
 
+  // An empty list still needs one line, or the dropdown opens onto nothing.
   const selectOptions = (items: { name: string }[]) =>
-    items.length === 0 ? (
-      <option value="">{L("none")}</option>
-    ) : (
-      items.map((o) => (
-        <option key={o.name} value={o.name}>
-          {o.name}
-        </option>
-      ))
-    );
+    items.length === 0
+      ? [{ value: "", label: L("none") }]
+      : items.map((o) => ({ value: o.name, label: o.name }));
 
   return (
     <Modal
@@ -199,9 +195,13 @@ export default function NewCaseModal({
           <>
             <div>
               <label htmlFor="nc-dept">{L("dept")}</label>
-              <select id="nc-dept" value={dept} onChange={(e) => setDept(e.target.value)}>
-                {selectOptions(depts)}
-              </select>
+              <SingleSelect
+                id="nc-dept"
+                block
+                value={dept}
+                onChange={setDept}
+                options={selectOptions(depts)}
+              />
             </div>
             <div>
               <label>CS</label>
@@ -216,15 +216,23 @@ export default function NewCaseModal({
           <>
             <div>
               <label htmlFor="nc-type">Type</label>
-              <select id="nc-type" value={hoType} onChange={(e) => setHoType(e.target.value)}>
-                {selectOptions(types)}
-              </select>
+              <SingleSelect
+                id="nc-type"
+                block
+                value={hoType}
+                onChange={setHoType}
+                options={selectOptions(types)}
+              />
             </div>
             <div>
               <label htmlFor="nc-class">Classification</label>
-              <select id="nc-class" value={hoClass} onChange={(e) => setHoClass(e.target.value)}>
-                {selectOptions(classes)}
-              </select>
+              <SingleSelect
+                id="nc-class"
+                block
+                value={hoClass}
+                onChange={setHoClass}
+                options={selectOptions(classes)}
+              />
             </div>
             <div>
               <label htmlFor="nc-op">OP</label>
@@ -236,9 +244,13 @@ export default function NewCaseModal({
             </div>
             <div>
               <label htmlFor="nc-status">{L("status")}</label>
-              <select id="nc-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                {selectOptions(statuses)}
-              </select>
+              <SingleSelect
+                id="nc-status"
+                block
+                value={status}
+                onChange={setStatus}
+                options={selectOptions(statuses)}
+              />
             </div>
             <div>
               <label htmlFor="nc-ticket">{L("relatedTicket")}</label>

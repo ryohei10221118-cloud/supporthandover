@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Modal from "./Modal";
+import { SingleSelect } from "./SingleSelect";
 import type { OptionLists } from "@/lib/optionLists";
 import type { SupaCaseRow } from "@/lib/supabaseCases";
 
@@ -81,25 +82,29 @@ export default function MoveToHoModal({
       <div className="form-grid">
         <div>
           <label htmlFor="move-type">{t(lang, "type")}</label>
-          <select id="move-type" value={hoType} onChange={(e) => setHoType(e.target.value)}>
-            <option value="">{t(lang, "pick")}</option>
-            {types.map((o) => (
-              <option key={o.id} value={o.name}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          <SingleSelect
+            id="move-type"
+            block
+            value={hoType}
+            onChange={setHoType}
+            options={[
+              { value: "", label: t(lang, "pick") },
+              ...types.map((o) => ({ value: o.name, label: o.name })),
+            ]}
+          />
         </div>
         <div>
           <label htmlFor="move-class">{t(lang, "classification")}</label>
-          <select id="move-class" value={hoClass} onChange={(e) => setHoClass(e.target.value)}>
-            <option value="">{t(lang, "pick")}</option>
-            {classes.map((o) => (
-              <option key={o.id} value={o.name}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          <SingleSelect
+            id="move-class"
+            block
+            value={hoClass}
+            onChange={setHoClass}
+            options={[
+              { value: "", label: t(lang, "pick") },
+              ...classes.map((o) => ({ value: o.name, label: o.name })),
+            ]}
+          />
         </div>
         <p className="hint full" style={{ margin: 0 }}>
           {t(lang, "required")}

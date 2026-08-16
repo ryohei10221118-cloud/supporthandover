@@ -13,6 +13,7 @@ import type {
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
 import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
 import { mergeHistoryEntries, type MergeableEntry } from "@/lib/historyMerge";
+import { SingleSelect } from "./SingleSelect";
 import ImageLightbox, { isViewableImage } from "./ImageLightbox";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
 import Modal from "./Modal";
@@ -821,9 +822,9 @@ function MultiSelect({
 
   return (
     <div className="multiselect" ref={rootRef}>
-      {/* The caret is drawn in CSS, not typed here: the ▾ glyph rendered at a
-          different size and weight from the arrow the browser puts on the
-          date <select>s next to it. */}
+      {/* The caret is drawn in CSS, not typed here: a ▾ glyph renders at
+          whatever size and weight the text font gives it, which never matched
+          the other dropdowns in the row. */}
       <button
         type="button"
         className={`multiselect-summary${open ? " open" : ""}`}
@@ -2077,17 +2078,19 @@ export default function SupaBoard({
       <div className="pagination-bar">
         <div className="page-size-group">
           {t(lang, "perPage")}
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
+          <SingleSelect
+            ariaLabel={t(lang, "perPage")}
+            value={String(pageSize)}
+            onChange={(next) => {
+              setPageSize(Number(next));
               setCurrentPage(1);
             }}
-          >
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-            <option value={200}>200</option>
-          </select>
+            options={[
+              { value: "50", label: "50" },
+              { value: "100", label: "100" },
+              { value: "200", label: "200" },
+            ]}
+          />
         </div>
         <div className="page-nav">
           <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1}>

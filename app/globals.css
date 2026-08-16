@@ -1,4 +1,10 @@
 :root {
+  /* The chevron every dropdown wears, defined once rather than as the same
+     data URI copied into each rule. A background image can't read
+     currentColor, so the stroke is a fixed mid grey — it holds up against
+     both the light and the dark surface. */
+  --caret-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --caret-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 5l4-4 4 4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --bg: #f7f8fa;
   --surface: #ffffff;
   --border: #e2e5ea;
@@ -702,7 +708,6 @@ h1 {
 }
 
 .form-grid input,
-.form-grid select,
 .form-grid textarea {
   width: 100%;
   font-family: inherit;
@@ -720,7 +725,6 @@ h1 {
 }
 
 .form-grid input:focus,
-.form-grid select:focus,
 .form-grid textarea:focus {
   outline: none;
   border-color: var(--accent);
@@ -1191,7 +1195,7 @@ button.primary:disabled {
 .multiselect-summary {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: var(--caret-down);
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
@@ -1199,7 +1203,7 @@ button.primary:disabled {
 
 /* Open reverses it, the way the ▾/▴ pair used to say the same thing. */
 .multiselect-summary.open {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 5l4-4 4 4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: var(--caret-up);
 }
 
 .range-calendar {
@@ -1468,16 +1472,6 @@ tbody td {
   gap: 8px;
   font-size: 0.8rem;
   color: var(--text-muted);
-}
-
-.page-size-group select {
-  font-family: inherit;
-  font-size: 0.8rem;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 5px 8px;
 }
 
 .page-nav {
@@ -3010,30 +3004,6 @@ tr:hover .row-delete-btn,
   color: var(--accent);
 }
 
-select.role-select,
-select.threshold {
-  font-family: inherit;
-  font-size: 0.8rem;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 5px 8px;
-}
-
-select.threshold {
-  font-size: 0.86rem;
-  padding: 8px 11px;
-  border-radius: 8px;
-}
-
-select.role-select:focus,
-select.threshold:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
 .row-actions {
   display: flex;
   gap: 6px;
@@ -3402,4 +3372,96 @@ button.attach-chip {
   max-height: 120px;
   overflow-y: auto;
   white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * SingleSelect
+ *
+ * The replacement for every native <select> in the app — there are none left.
+ *
+ * Kept together at the end of the stylesheet on purpose. Each place a select
+ * used to live still styles its surroundings from a rule further up
+ * (.form-grid, .page-size-group, .field-row), and defining the trigger after
+ * all of them means a `padding` or `background` shorthand up there can't
+ * quietly strip the caret off again — which it did, twice, while this was
+ * being written.
+ * ------------------------------------------------------------------------ */
+
+.single-select {
+  position: relative;
+  display: inline-block;
+}
+
+/* Fills its column, the way a form field does. */
+.single-select.block {
+  display: block;
+  width: 100%;
+}
+
+.single-select.block .select-trigger {
+  width: 100%;
+}
+
+.single-select.block .multiselect-menu {
+  min-width: 100%;
+}
+
+.select-trigger {
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background-color: var(--surface);
+  background-image: var(--caret-down);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 28px 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.select-trigger.open {
+  background-image: var(--caret-up);
+}
+
+.select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* The filter row: one height for every control on it — see "One shape for
+   every filter control" above. */
+.date-range .select-trigger {
+  height: 34px;
+  padding-block: 0;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+/* A form field sits on the modal's own ground, not on a card. */
+.form-grid .select-trigger {
+  background-color: var(--bg);
+}
+
+/* The small controls: the per-page picker, the role pickers, the admin
+   dropdowns. Same shape, one size down. */
+.page-size-group .select-trigger,
+.select-trigger.role-select {
+  font-size: 0.8rem;
+  border-radius: 7px;
+  padding: 5px 26px 5px 8px;
+  background-position: right 8px center;
+}
+
+.select-trigger.threshold {
+  font-size: 0.86rem;
+  padding: 8px 29px 8px 11px;
 }
