@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { CASES_TAG } from "@/lib/cacheTags";
-import { applySheetImport, sheetSourceFor } from "@/lib/sheetImport";
+import { applySheetImport, sheetSourceFor, isSyncField, syncFieldsForBoard } from "@/lib/sheetImport";
+import type { SyncField } from "@/lib/sheetImport";
 import { getSheetModifiedTime } from "@/lib/sheetsApi";
 import { readSyncState, writeSyncState } from "@/lib/syncState";
 import type { SupaBoard } from "@/lib/supabaseCases";
@@ -27,11 +28,16 @@ const BOARDS: SupaBoard[] = ["t1ho", "ho"];
  * on the following run, but it is a reason to leave more time between calls
  * than a run takes, and not to point two schedulers at this at once.
  *
- * Insert-only, always: it brings across cases and replies the boards don't
- * have and touches nothing that already exists. Field syncing stays manual
- * because it overwrites, and overwriting is not a decision to hand to a
- * timer — the board's value is often the newer one, and nobody would be
- * watching when the sheet won.
+ * Insert-only by default: it brings across cases and replies the boards don't
+ * have and touches nothing that already exists.
+ *
+ * ?fields= turns field syncing on, for a sheet that is the source of truth.
+ * It is off unless asked for, and named rather than implied, because syncing
+ * overwrites: the board's value is often the newer one, and on a timer nobody
+ * is watching at the moment the sheet wins. `?fields=all` takes every column
+ * the board syncs; `?fields=status,priority` takes only those. Whatever it
+ * replaces is kept in field_edit_history either way, so a run that took the
+ * wrong column is legible afterwards rather than silent.
  *
  * Authorised by a shared secret rather than a session, because there is no
  * user here. Vercel sends CRON_SECRET as a bearer token on scheduled
@@ -62,6 +68,29 @@ export async function GET(req: NextRequest) {
 
   const only = req.nextUrl.searchParams.get("board");
   const boards = BOARDS.filter((b) => !only || b === only);
+
+  // Which columns this run may overwrite on cases that already exist. Absent
+  // means none, which is the insert-only behaviour described above.
+  const rawFields = (req.nextUrl.searchParams.get("fields") ?? "").trim();
+  const allFields = rawFields.toLowerCase() === "all";
+  const namedFields = rawFields
+    .split(",")
+    .map((f) => f.trim())
+    .filter((f): f is SyncField => isSyncField(f));
+  // A name that isn't a field is a typo, and silently syncing the rest of the
+  // list is how "why didn't status come across" becomes a long afternoon.
+  const badFields = allFields
+    ? []
+    : rawFields
+        .split(",")
+        .map((f) => f.trim())
+        .filter((f) => f && !isSyncField(f));
+  if (badFields.length > 0) {
+    return NextResponse.json(
+      { error: `不認得這些欄位: ${badFields.join(", ")}` },
+      { status: 400 }
+    );
+  }
 
   const results: Record<string, unknown> = {};
   let wroteSomething = false;
@@ -99,15 +128,28 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const result = await applySheetImport(board, { syncFields: [], createFrom });
+      // Per board, because the two don't share a column list — asking for HO's
+      // Type while importing T1 HO must not write a column that board hasn't
+      // got. applySheetImport narrows it again for the same reason.
+      const syncFields = allFields ? syncFieldsForBoard(board) : namedFields;
+
+      const result = await applySheetImport(board, { syncFields, createFrom });
       await writeSyncState(board, modifiedAt);
-      results[board] = { ...result, ...seen };
-      if (result.casesInserted > 0 || result.commentsInserted > 0 || result.commentsUpdated > 0) {
+      results[board] = { ...result, ...seen, syncedFields: syncFields };
+      // fieldsUpdated counts too: a run that only brought a status across still
+      // changed the board, and without it the cache keeps serving the old one.
+      if (
+        result.casesInserted > 0 ||
+        result.commentsInserted > 0 ||
+        result.commentsUpdated > 0 ||
+        result.fieldsUpdated > 0
+      ) {
         wroteSomething = true;
       }
       console.log(
         `cron/sheet-import ${board}: +${result.casesInserted} cases, ` +
-          `+${result.commentsInserted} comments, ~${result.commentsUpdated} updated`
+          `+${result.commentsInserted} comments, ~${result.commentsUpdated} updated, ` +
+          `~${result.fieldsUpdated} fields`
       );
     } catch (err) {
       // One board's sheet being unreachable shouldn't stop the other's import.
