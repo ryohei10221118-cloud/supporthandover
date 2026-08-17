@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/adminGuard";
 import { CASES_TAG } from "@/lib/cacheTags";
 import { applySheetImport, isSyncField, planSheetImport } from "@/lib/sheetImport";
+import { acquireImportLock, releaseImportLock } from "@/lib/syncState";
 import type { SupaBoard } from "@/lib/supabaseCases";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,17 @@ export async function POST(req: NextRequest) {
     .split(",")
     .map((f) => f.trim())
     .filter(isSyncField);
+  // The likeliest collision of all: pressing this while the sheet's own
+  // trigger has a scheduled run in flight. Both would read the board before
+  // either wrote, and both would then add the same reply.
+  const lock = await acquireImportLock(board);
+  if (!lock.token && !lock.error) {
+    return NextResponse.json(
+      { error: "另一個匯入正在執行中，請稍候再試。" },
+      { status: 409 }
+    );
+  }
+
   try {
     const createFrom = createFromParam(req);
     const result = await applySheetImport(board, { syncFields, createFrom });
@@ -55,5 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ...result, plan: await planSheetImport(board, { createFrom }) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "匯入失敗" }, { status: 502 });
+  } finally {
+    if (lock.token) await releaseImportLock(board, lock.token);
   }
 }

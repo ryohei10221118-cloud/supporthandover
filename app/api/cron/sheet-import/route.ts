@@ -4,7 +4,7 @@ import { CASES_TAG } from "@/lib/cacheTags";
 import { applySheetImport, sheetSourceFor, isSyncField, syncFieldsForBoard } from "@/lib/sheetImport";
 import type { SyncField } from "@/lib/sheetImport";
 import { getSheetModifiedTime } from "@/lib/sheetsApi";
-import { readSyncState, writeSyncState } from "@/lib/syncState";
+import { acquireImportLock, readSyncState, releaseImportLock, writeSyncState } from "@/lib/syncState";
 import type { SupaBoard } from "@/lib/supabaseCases";
 
 export const dynamic = "force-dynamic";
@@ -133,9 +133,30 @@ export async function GET(req: NextRequest) {
       // got. applySheetImport narrows it again for the same reason.
       const syncFields = allFields ? syncFieldsForBoard(board) : namedFields;
 
-      const result = await applySheetImport(board, { syncFields, createFrom });
-      await writeSyncState(board, modifiedAt);
-      results[board] = { ...result, ...seen, syncedFields: syncFields };
+      // Claimed after the modifiedTime check, so a run with nothing to do
+      // doesn't take a lock off one that has work.
+      const lock = await acquireImportLock(board);
+      if (!lock.token && !lock.error) {
+        results[board] = { skipped: "another import is running", ...seen };
+        continue;
+      }
+
+      let result;
+      try {
+        result = await applySheetImport(board, { syncFields, createFrom });
+        // Only once the import is through: a run that threw halfway has
+        // brought part of the sheet across, and recording the sheet as seen
+        // would tell the next run there is nothing left to do.
+        await writeSyncState(board, modifiedAt);
+      } finally {
+        if (lock.token) await releaseImportLock(board, lock.token);
+      }
+      results[board] = {
+        ...result,
+        ...seen,
+        syncedFields: syncFields,
+        ...(lock.token ? {} : { lockError: lock.error }),
+      };
       // fieldsUpdated counts too: a run that only brought a status across still
       // changed the board, and without it the cache keeps serving the old one.
       if (

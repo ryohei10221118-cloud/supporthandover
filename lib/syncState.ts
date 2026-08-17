@@ -25,6 +25,93 @@ export interface SyncState {
   lastRunAt: string | null;
 }
 
+/**
+ * How long a lock is honoured before another run may take it.
+ *
+ * Both import routes cap out at maxDuration = 60s, so a lock older than this
+ * belongs to a run that has already been killed — the process was stopped
+ * mid-flight and never got to release it. Without a ceiling that lock would
+ * stand forever and no import would run again.
+ */
+const LOCK_STALE_MS = 2 * 60 * 1000;
+
+export interface ImportLock {
+  /** Non-null when this caller may import. Pass it back to release. */
+  token: string | null;
+  /**
+   * Set only when the lock could not be consulted at all. A null token with a
+   * null error is the ordinary "somebody else has it" answer.
+   */
+  error: string | null;
+}
+
+/**
+ * Claims the right to import this board, or reports that someone else has it.
+ *
+ * Two imports overlapping is not hypothetical: the sheet's trigger fires on
+ * every change and people edit in bursts, so a second request commonly arrives
+ * inside the few seconds the first takes. Both would read "what the board has"
+ * before either writes, and both would then decide the same reply is missing —
+ * cases are saved by the unique index on (board, seq), but comments have no
+ * such constraint, so the same text gets inserted twice.
+ *
+ * The claim is a conditional UPDATE: Postgres applies the WHERE and the SET in
+ * one statement, so of two runs racing it exactly one can match a free lock.
+ * A token rather than a flag, so a run that overran and lost its lock to the
+ * staleness rule can't later release a lock that now belongs to someone else.
+ *
+ * Callers skip rather than queue when it is held — the work is not lost,
+ * because whatever prompted this run will prompt the next one too.
+ */
+export async function acquireImportLock(board: SupaBoard): Promise<ImportLock> {
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - LOCK_STALE_MS).toISOString();
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("sync_state")
+    .update({ locked_at: now.toISOString(), locked_by: token })
+    .eq("board", board)
+    .or(`locked_at.is.null,locked_at.lt.${staleBefore}`)
+    .select("board")
+    .maybeSingle<{ board: SupaBoard }>();
+
+  if (data) return { token, error: null };
+
+  if (error) {
+    // The migration hasn't been run: the columns aren't there. Import anyway
+    // rather than stopping the sync dead — this guards against a collision
+    // that is occasional, and refusing to run guarantees an outage that isn't.
+    // Reported to the caller as well as logged, because a lock that silently
+    // never engages looks exactly like one that is working.
+    console.error(`import lock unavailable for ${board}:`, error.message);
+    return { token: null, error: error.message };
+  }
+
+  // No row updated, and no error. Either another run holds the lock, or this
+  // board has no row yet. Inserting settles it: the primary key on board means
+  // two runs racing to create the first row can't both win.
+  const { error: insertError } = await supabase
+    .from("sync_state")
+    .insert({ board, locked_at: now.toISOString(), locked_by: token });
+  if (!insertError) return { token, error: null };
+
+  return { token: null, error: null };
+}
+
+/** Releases a lock, but only if it is still the one we took. */
+export async function releaseImportLock(board: SupaBoard, token: string): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from("sync_state")
+    .update({ locked_at: null, locked_by: null })
+    .eq("board", board)
+    .eq("locked_by", token);
+  // Worth knowing about, but not worth failing an import that already
+  // succeeded — the staleness rule frees it either way.
+  if (error) console.error(`import lock release failed for ${board}:`, error.message);
+}
+
 export async function readSyncState(board: SupaBoard): Promise<SyncState | null> {
   const { data, error } = await getSupabaseClient()
     .from("sync_state")
