@@ -329,6 +329,12 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* That gap belongs to the description under it. On the pages that don't
+   carry one it's just a ragged 4px below the title. */
+.topbar h1:last-child {
+  margin-bottom: 0;
+}
+
 .topbar p {
   margin: 0;
   color: var(--text-muted);

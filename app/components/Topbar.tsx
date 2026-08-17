@@ -5,22 +5,24 @@ import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT } from "@/lib/theme";
 
 type Lang = "zh" | "en";
 
-// Title/description per board, matching the mockup's PAGE_META.
+/*
+ * Title, and a description only where one earns its place.
+ *
+ * The three pages people live in don't carry one: their titles already say
+ * what they are, and a line of explanation that never changes stops being
+ * read after the first visit while still pushing the board down the screen
+ * on every one after. The settings pages keep theirs — those get visited
+ * rarely enough that the reminder is worth the room.
+ */
 export const PAGE_META = {
   t1ho: {
     title: { zh: "T1 HO", en: "T1 HO" },
-    desc: { zh: "前台客服案件，交接與追蹤用。", en: "Front-line CS cases, for handover and tracking." },
   },
   ho: {
     title: { zh: "HO", en: "HO" },
-    desc: { zh: "需要長期追蹤的案件，交接用。", en: "Cases needing long-term tracking and handover." },
   },
   dashboard: {
     title: { zh: "分析儀表板", en: "Dashboard" },
-    desc: {
-      zh: "跨分頁案件概況，給主管與其他部門一眼看懂。",
-      en: "Cross-board overview, at a glance for managers and other teams.",
-    },
   },
   lists: {
     title: { zh: "選項管理", en: "Option lists" },
@@ -43,7 +45,7 @@ export const PAGE_META = {
       en: "This page reads Supabase rather than the Google Sheet — for data verification only.",
     },
   },
-} satisfies Record<string, { title: Record<Lang, string>; desc: Record<Lang, string> }>;
+} satisfies Record<string, { title: Record<Lang, string>; desc?: Record<Lang, string> }>;
 
 export default function Topbar({
   page,
@@ -71,13 +73,14 @@ export default function Topbar({
   }, []);
 
   const meta = PAGE_META[page];
+  const desc = "desc" in meta ? (meta.desc as Record<Lang, string>)[lang] : null;
 
   return (
     <div className="topbar">
       <div className="topbar-titlebar">
         <div>
           <h1>{meta.title[lang]}</h1>
-          <p>{meta.desc[lang]}</p>
+          {desc && <p>{desc}</p>}
         </div>
       </div>
       {action}
