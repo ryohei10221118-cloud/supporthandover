@@ -82,6 +82,12 @@ export interface ImportPlanFieldChange {
   from: string;
   /** What the board says now. */
   to: string;
+  /**
+   * The board has nothing in this field, so the sheet's value gets filled in
+   * whether or not the field was opted into. Filling a blank can't overwrite
+   * anybody's work, which is the only reason syncing is opt-in at all.
+   */
+  backfill: boolean;
 }
 
 /** One row of a sheet sequence number that appears more than once. */

@@ -547,7 +547,7 @@ function sheetValue(row: MappedRow, field: SyncField): string {
  * answer typed by two different people, and offering that as a change to
  * review is just noise.
  */
-function fieldDiff(
+export function fieldDiff(
   row: MappedRow,
   match: ExistingCase,
   field: SyncField
@@ -557,6 +557,29 @@ function fieldDiff(
   const to = normalise((match[SYNC_FIELDS[field].column] ?? "").toString());
   if (comparable(from) === comparable(to)) return null;
   return { from, to };
+}
+
+/**
+ * Whether a difference is one the board has nothing to lose over.
+ *
+ * A field the board is empty on gets the sheet's value whether or not it was
+ * opted into: filling a blank can't overwrite anybody's work, and that risk is
+ * the only reason syncing is opt-in at all. This is the ordinary shape of a
+ * row here — the sheet's trigger fires the moment somebody types the content,
+ * the case arrives with most of its columns empty, and the department and CS
+ * get picked a minute later. Without this those land as "fields differ",
+ * listed but never applied, and the case keeps "—" in half its columns.
+ *
+ * Exported so the rule can be tested directly rather than through a copy of
+ * it — a hand-built copy is what hid the create_date bug.
+ */
+export function isBackfill(diff: { from: string; to: string }): boolean {
+  return !diff.to.trim();
+}
+
+/** Whether this run writes the difference: blanks always, the rest on request. */
+export function willWriteField(diff: { from: string; to: string }, optedIn: boolean): boolean {
+  return isBackfill(diff) || optedIn;
 }
 
 /**
@@ -652,7 +675,7 @@ export async function planSheetImport(
     for (const field of fields) {
       const diff = fieldDiff(row, match, field);
       if (!diff) continue;
-      plan.fieldChanges.push({ seq: match.seq, field, ...diff });
+      plan.fieldChanges.push({ seq: match.seq, field, ...diff, backfill: isBackfill(diff) });
       touched = true;
     }
 
@@ -738,9 +761,12 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
         });
       }
     }
-    for (const field of syncFields) {
+    // Every field the board has, not just the ones asked for: a column the
+    // board has nothing in gets filled either way — see isBackfill.
+    for (const field of syncFieldsForBoard(board)) {
       const diff = fieldDiff(row, match, field);
       if (!diff) continue;
+      if (!willWriteField(diff, syncFields.includes(field))) continue;
       updates.push({
         id: match.id,
         field,
