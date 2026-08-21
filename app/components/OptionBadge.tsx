@@ -58,6 +58,9 @@ export default function OptionBadge({
       <button
         type="button"
         className={`status-trigger${chip ? " chip" : ""}`}
+        // A long option is cut to fit its column, so the whole of it has to be
+        // available somewhere — "OP request / OP r…" doesn't say which one.
+        title={text || undefined}
         disabled={!canEdit || isSubmitting}
         onClick={() => setOpen((o) => !o)}
       >

@@ -1601,6 +1601,11 @@ tbody td {
 .status-wrap {
   display: inline-block;
   position: relative;
+  /* Bounded by the cell. Without this the wrap is shrink-to-fit, so the
+     trigger's own max-width: 100% resolves against the wrap's content width —
+     100% of itself, which never constrains anything — and a long option like
+     "OP request / OP related" runs straight over the next column. */
+  max-width: 100%;
 }
 
 .status-trigger {
@@ -1622,6 +1627,9 @@ tbody td {
 .status-trigger .status-text {
   overflow: hidden;
   text-overflow: ellipsis;
+  /* A flex item won't shrink below its content without this, so the ellipsis
+     never gets the chance to appear. */
+  min-width: 0;
 }
 
 .status-trigger.chip {
