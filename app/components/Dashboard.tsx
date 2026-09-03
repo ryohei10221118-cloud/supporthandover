@@ -102,12 +102,17 @@ function orderedBars(
 // `total` is the size of the set this chart breaks down, so a bar's length
 // reads as "this share of the cases in range". Sizing against the chart's
 // own largest value instead would make a lone 4 look the same as a lone 20.
+export interface BarBreakdown {
+  label: string;
+  value: number;
+}
+
 function BarChart({
   bars,
   total,
   empty,
 }: {
-  bars: { name: string; value: number; color?: string }[];
+  bars: { name: string; value: number; color?: string; breakdown?: BarBreakdown[] }[];
   total: number;
   empty: string;
 }) {
@@ -116,7 +121,13 @@ function BarChart({
   return (
     <div>
       {bars.map((b) => (
-        <div className="bar-row" key={b.name}>
+        <div
+          className="bar-row"
+          key={b.name}
+          // Focusable only where there is something to reveal, so tabbing
+          // through the dashboard doesn't stop on every inert bar.
+          tabIndex={b.breakdown ? 0 : undefined}
+        >
           <span className="bar-label" title={b.name}>
             {b.name}
           </span>
@@ -128,6 +139,19 @@ function BarChart({
           </div>
           <span className="bar-value">{b.value.toLocaleString()}</span>
           <span className="bar-pct">{Math.round((b.value / denom) * 100)}%</span>
+          {b.breakdown && (
+            <div className="bar-tip" role="tooltip">
+              {b.breakdown.map((p) => (
+                <span key={p.label}>
+                  <em>{p.label}</em>
+                  {p.value.toLocaleString()}
+                </span>
+              ))}
+              {/* The tip sits over this row's own count, so it brings it
+                  along rather than hiding it. */}
+              <span className="bar-tip-total">{b.value.toLocaleString()}</span>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -178,7 +202,17 @@ export default function Dashboard({
   const deptCounts = countBy(t1ho, (r) => r.dept);
   const typeCounts = countBy(ho, (r) => r.hoType);
 
-  const priorityBars = orderedBars(priorityCounts, opts("priority"));
+  // The one chart that merges the boards, so it's the one where "how many of
+  // these are mine?" can't be read off the page — the split goes in a hover.
+  const t1hoPriority = countBy(t1ho, (r) => r.priority);
+  const hoPriority = countBy(ho, (r) => r.priority);
+  const priorityBars = orderedBars(priorityCounts, opts("priority")).map((b) => ({
+    ...b,
+    breakdown: [
+      { label: "T1 HO", value: t1hoPriority[b.name] ?? 0 },
+      { label: "HO", value: hoPriority[b.name] ?? 0 },
+    ],
+  }));
   const t1hoStatusBars = orderedBars(countBy(t1ho, (r) => r.status), opts("t1ho-status"));
   const hoStatusBars = orderedBars(countBy(ho, (r) => r.status), opts("ho-status"));
   const deptBars = orderedBars(deptCounts, opts("t1ho-dept"), 8);
