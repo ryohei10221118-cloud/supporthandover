@@ -13,7 +13,7 @@ type Board = "t1ho" | "ho";
  */
 export const SYNC_FIELDS = {
   status: { column: "status", boards: ["t1ho", "ho"], label: { zh: "狀態", en: "Status" } },
-  priority: { column: "priority", boards: ["t1ho"], label: { zh: "Priority", en: "Priority" } },
+  priority: { column: "priority", boards: ["t1ho", "ho"], label: { zh: "Priority", en: "Priority" } },
   issueTag: { column: "issue_tag", boards: ["t1ho"], label: { zh: "Issue Tag", en: "Issue Tag" } },
   dept: { column: "dept", boards: ["t1ho"], label: { zh: "部門", en: "Department" } },
   hoType: { column: "ho_type", boards: ["ho"], label: { zh: "Type", en: "Type" } },

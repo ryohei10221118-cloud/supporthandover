@@ -160,8 +160,10 @@ async function readSheet(board: SupaBoard): Promise<MappedRow[]> {
     hoClass: blankToNull(r.classification),
     op: blankToNull(r.op),
     cs: blankToNull(r.cs),
-    // The HO tab has no Priority column — only T1 HO tracks it.
-    priority: "",
+    // Blank until the HO tab grows a Priority column — the schema matches it
+    // on the header alone, so a sheet without it reads as no priority rather
+    // than as some other column's text, and a blank never overwrites.
+    priority: r.priority.trim(),
     issueTag: null,
     relatedTicketLabel: blankToNull(r.relatedTicket),
     noteLabel: blankToNull(r.note),
