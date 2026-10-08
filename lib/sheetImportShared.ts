@@ -156,6 +156,13 @@ export interface ImportResult {
   commentsInserted: number;
   commentsUpdated: number;
   fieldsUpdated: number;
+  /** Cases the import itself created whose sheet row has since gone. */
+  casesDeleted: number;
+  /**
+   * Set when more rows vanished than one run is allowed to act on, so none of
+   * them were deleted — see MAX_PRUNE. The cases are listed by number.
+   */
+  pruneHeld?: string[];
 }
 
 export interface ImportOptions {
@@ -171,4 +178,10 @@ export interface ImportOptions {
    * cases that are still running keep coming through.
    */
   createFrom?: string;
+  /**
+   * Delete cases whose sheet row has been removed — only ones this import
+   * created, only on or after createFrom, and only if nobody has worked on
+   * them in the tool. Off unless asked for. See findOrphans.
+   */
+  prune?: boolean;
 }

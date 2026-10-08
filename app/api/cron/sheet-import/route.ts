@@ -66,6 +66,10 @@ export async function GET(req: NextRequest) {
   // of those is a full comparison. ?force=1 runs one anyway.
   const force = req.nextUrl.searchParams.get("force") === "1";
 
+  // Delete cases whose sheet row was removed. Opt-in, like fields= — see
+  // findOrphans for which cases it will and won't touch.
+  const prune = req.nextUrl.searchParams.get("prune") === "1";
+
   const only = req.nextUrl.searchParams.get("board");
   const boards = BOARDS.filter((b) => !only || b === only);
 
@@ -143,7 +147,7 @@ export async function GET(req: NextRequest) {
 
       let result;
       try {
-        result = await applySheetImport(board, { syncFields, createFrom });
+        result = await applySheetImport(board, { syncFields, createFrom, prune });
         // Only once the import is through: a run that threw halfway has
         // brought part of the sheet across, and recording the sheet as seen
         // would tell the next run there is nothing left to do.
@@ -163,14 +167,16 @@ export async function GET(req: NextRequest) {
         result.casesInserted > 0 ||
         result.commentsInserted > 0 ||
         result.commentsUpdated > 0 ||
-        result.fieldsUpdated > 0
+        result.fieldsUpdated > 0 ||
+        result.casesDeleted > 0
       ) {
         wroteSomething = true;
       }
       console.log(
         `cron/sheet-import ${board}: +${result.casesInserted} cases, ` +
           `+${result.commentsInserted} comments, ~${result.commentsUpdated} updated, ` +
-          `~${result.fieldsUpdated} fields`
+          `~${result.fieldsUpdated} fields, -${result.casesDeleted} cases` +
+          (result.pruneHeld ? ` (held ${result.pruneHeld.length} over the prune limit)` : "")
       );
     } catch (err) {
       // One board's sheet being unreachable shouldn't stop the other's import.

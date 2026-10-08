@@ -185,7 +185,9 @@ type ExistingCase = { id: string; seq: string } & Record<string, string | null>;
  * leaving it out silently made every date comparison fail: nothing matched,
  * and every sheet row looked like a case the board had never seen.
  */
-const RESOLVER_COLUMNS = ["id", "seq", "create_date", "deleted_at"] as const;
+// created_by and moved_to_case_id are read for pruning: only a case the import
+// created is ever a candidate, and a handed-over case never is.
+const RESOLVER_COLUMNS = ["id", "seq", "create_date", "deleted_at", "created_by", "moved_to_case_id"] as const;
 
 // Deleted cases stay in the index: a row still sitting in the sheet has to
 // find the case it was deleted from, or the next import would recreate it and
@@ -204,6 +206,8 @@ interface ExistingIndex {
   /** Every number in use, suffixed ones included — what a new row must avoid. */
   taken: Set<string>;
   commentsByCase: Map<string, ExistingComment[]>;
+  /** The import's own user id, or null if it has never written anything. */
+  importAuthorId: string | null;
 }
 
 interface ExistingComment {
@@ -291,7 +295,7 @@ async function loadExisting(board: SupaBoard): Promise<ExistingIndex> {
     if (page.length < PAGE) break;
   }
 
-  return { byBase, taken, commentsByCase };
+  return { byBase, taken, commentsByCase, importAuthorId };
 }
 
 /**
@@ -716,6 +720,55 @@ function mayCreate(row: MappedRow, createFrom: string | undefined): boolean {
 }
 
 /**
+ * More vanished rows than this in one run and nothing is deleted.
+ *
+ * Somebody removing a mistaken line removes one, maybe a few. A run that sees
+ * dozens gone has almost certainly read the sheet wrong — a tab renamed, a
+ * header row moved, a filter left on — and acting on that would sweep the
+ * board. Holding them and saying so costs one manual look; acting would cost
+ * a restore.
+ */
+export const MAX_PRUNE = 5;
+
+/**
+ * Cases whose sheet row has been removed, and which are safe to delete for it.
+ *
+ * Every condition is a way the board could know something the sheet doesn't:
+ *  - created by the import: a case somebody filed in the tool was never in
+ *    the sheet, so its absence there means nothing;
+ *  - dated on or after createFrom: below that line the sheet's reused
+ *    numbering means "unmatched" is routine, not a deletion;
+ *  - not handed over to HO: that case has a life on the other board now;
+ *  - no comment from a person: somebody has worked on it here, and a row
+ *    vanishing from the sheet isn't a decision to throw that away.
+ *
+ * The delete is the board's ordinary soft delete, so any of it is one UPDATE
+ * to undo.
+ */
+export function findOrphans(
+  matchedIds: Set<string>,
+  existing: Pick<ExistingIndex, "byBase" | "commentsByCase" | "importAuthorId">,
+  createFrom: string
+): { orphans: ExistingCase[]; keptForWork: ExistingCase[] } {
+  const orphans: ExistingCase[] = [];
+  const keptForWork: ExistingCase[] = [];
+  if (!existing.importAuthorId) return { orphans, keptForWork };
+  for (const list of existing.byBase.values()) {
+    for (const c of list) {
+      if (c.deleted_at) continue;
+      if (c.created_by !== existing.importAuthorId) continue;
+      if ((c.create_date ?? "") < createFrom) continue;
+      if (c.moved_to_case_id) continue;
+      if (matchedIds.has(c.id)) continue;
+      const comments = existing.commentsByCase.get(c.id) ?? [];
+      if (comments.some((cm) => !cm.mine)) keptForWork.push(c);
+      else orphans.push(c);
+    }
+  }
+  return { orphans, keptForWork };
+}
+
+/**
  * Applies the plan. Inserts only, except for the fields the caller explicitly
  * asked to sync on cases that already exist.
  */
@@ -840,7 +893,32 @@ export async function applySheetImport(board: SupaBoard, options: ImportOptions 
   const commentsUpdated = await applyCommentRewrites(commentRewrites, authorId);
   const fieldsUpdated = await applyFieldUpdates(updates, authorId);
 
-  return { casesInserted, commentsInserted, commentsUpdated, fieldsUpdated };
+  let casesDeleted = 0;
+  let pruneHeld: string[] | undefined;
+  // Needs a createFrom: without one every case the import ever made is a
+  // candidate, archive included, and that is not a question this should be
+  // answering on its own. And never off an empty read — a sheet with no rows
+  // is a failed read, not a sheet somebody emptied.
+  if (options.prune && options.createFrom && rows.length > 0) {
+    const matchedIds = new Set(resolved.matched.map((m) => m.match.id));
+    const { orphans } = findOrphans(matchedIds, existingBefore, options.createFrom);
+    if (orphans.length > MAX_PRUNE) {
+      pruneHeld = orphans.map((c) => c.seq);
+      console.error(`sheet prune ${board}: ${orphans.length} rows gone, over the limit — none deleted`, pruneHeld);
+    } else if (orphans.length > 0) {
+      const { data, error } = await supabase
+        .from("cases")
+        .update({ deleted_at: new Date().toISOString(), deleted_by: authorId })
+        .in("id", orphans.map((c) => c.id))
+        .is("deleted_at", null)
+        .select("id")
+        .returns<{ id: string }[]>();
+      if (error) throw new Error(`刪除 cases 失敗: ${error.message}`);
+      casesDeleted = (data ?? []).length;
+    }
+  }
+
+  return { casesInserted, commentsInserted, commentsUpdated, fieldsUpdated, casesDeleted, pruneHeld };
 }
 
 /**
