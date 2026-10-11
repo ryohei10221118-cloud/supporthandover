@@ -11,8 +11,8 @@ import type {
   SupaEdit,
 } from "@/lib/supabaseCases";
 import { DateRangeFilter, dateBoundsForPreset, type DatePreset, type DateType } from "./DateRangeFilter";
-import { EditedTag, RowUpdateTag, type HistoryEntry } from "./EditHistoryTag";
-import { mergeHistoryEntries, type MergeableEntry } from "@/lib/historyMerge";
+import { EditedTag, RowUpdateTag } from "./EditHistoryTag";
+import { COMMENT_FIELD, historyHref } from "@/lib/fieldKeys";
 import { SingleSelect } from "./SingleSelect";
 import ImageLightbox, { isViewableImage } from "./ImageLightbox";
 import { LANG_STORAGE_KEY, LANG_CHANGE_EVENT, ROLE_PREVIEW_EVENT } from "@/lib/theme";
@@ -81,8 +81,6 @@ const STRINGS = {
   deleting: { zh: "刪除中...", en: "Deleting..." },
   deleteFailed: { zh: "刪除失敗", en: "Failed to delete" },
   // Row-level history entries — what happened, not what it said.
-  commentAdded: { zh: "新增留言", en: "Comment added" },
-  commentEdited: { zh: "編輯留言", en: "Comment edited" },
   commentPlaceholder: { zh: "輸入留言…（可直接 Ctrl+V 貼上截圖）", en: "Write a comment… (Ctrl+V to paste a screenshot)" },
   attachImage: { zh: "附加截圖", en: "Attach image" },
   attachOversize: {
@@ -178,14 +176,6 @@ function prettyNameFromEmail(email: string): string {
   return systemDisplayName(email) ?? prettyName(displayNameFromEmail(email));
 }
 
-function toHistoryEntry(e: SupaEdit): HistoryEntry {
-  return {
-    editor: displayNameFromEmail(e.editorEmail),
-    when: formatHistoryTimestamp(e.editedAt),
-    text: e.previousValue,
-  };
-}
-
 // MM/DD HH:MM in UTC+8, matching the T1 HO Sheets board's comment format.
 function formatTimestampUTC8(iso: string, withSeconds = false): string {
   const date = new Date(iso);
@@ -202,9 +192,6 @@ function formatTimestampUTC8(iso: string, withSeconds = false): string {
 // Edit history is the one place minutes aren't enough: several edits to the
 // same cell often land in the same minute, and without seconds the entries
 // read as if they happened at the same moment.
-function formatHistoryTimestamp(iso: string): string {
-  return formatTimestampUTC8(iso, true);
-}
 
 // YYYY-MM-DD HH:MM:SS in UTC+8, for the update-date cell. cases.update_date is
 // only a date, so a row that changed three times today reads as three
@@ -520,6 +507,7 @@ function AttachChip({
 
 function CommentThread({
   comments,
+  commentHistoryHref,
   cellKey,
   expanded,
   onToggleClamp,
@@ -576,6 +564,8 @@ function CommentThread({
   pendingImages: PendingImage[];
   onAddImages: (files: FileList | File[]) => void;
   onRemoveImage: (id: string) => void;
+  /** Where an edited comment's marker links, or null without history access. */
+  commentHistoryHref: string | null;
 }) {
   const isExpanded = expanded.has(cellKey);
   // Collapsed threads show only the first comment (the mockup's
@@ -599,7 +589,7 @@ function CommentThread({
                 {/* Comments edited before the history table existed still get
                     the marker — there's just nothing to show on hover. */}
                 {c.edits.length > 0 ? (
-                  <EditedTag entries={c.edits.map(toHistoryEntry)} lang={lang} />
+                  <EditedTag count={c.edits.length} href={commentHistoryHref} lang={lang} />
                 ) : (
                   c.editedAt && <span className="edited-tag">{t(lang, "editedTag")}</span>
                 )}
@@ -1540,70 +1530,22 @@ export default function SupaBoard({
     document.addEventListener("mouseup", onUp);
   }
 
-  // --- Edit history (the （已編輯）markers and the update-date hover card) ---
-
-  // Which column heading names each recorded field, so the row-level tooltip
-  // reads "狀態" rather than "status".
-  const FIELD_COLUMN: Record<string, ColumnKey> = {
-    dept: "group",
-    type: "group",
-    class: "classification",
-    status: "status",
-    priority: "priority",
-    issueTag: "issueTag",
-    op: "op",
-    cs: "cs",
-    content: "note",
-    relatedTicket: "relatedTicket",
-    note: "noteLabel",
-  };
-
-  function fieldHistory(c: SupaCaseRow, field: string): HistoryEntry[] {
-    return c.fieldEdits.filter((e) => e.field === field).map(toHistoryEntry);
-  }
+  // --- Edit history ---
+  //
+  // The board only says that something was edited. What it used to say, and
+  // who changed it, is on the history page, which is a permission: with it the
+  // markers link there, filtered to the case and field; without it they're
+  // plain text.
+  const canSeeHistory = !!perms["page.history"];
 
   function fieldTag(c: SupaCaseRow, field: string): ReactNode {
-    const entries = fieldHistory(c, field);
-    if (entries.length === 0) return null;
-    return <EditedTag entries={entries} lang={lang} />;
+    const count = c.fieldEdits.filter((e) => e.field === field).length;
+    if (count === 0) return null;
+    return <EditedTag count={count} href={canSeeHistory ? historyHref(board, c.id, field) : null} lang={lang} />;
   }
 
-  // The row's own history: which fields changed and when, plus comments
-  // posted and edited. Deliberately no before/after values — those live on
-  // each field's own marker.
-  function rowHistory(c: SupaCaseRow): HistoryEntry[] {
-    // `kind` is what keeps the merge below from running a field change into a
-    // comment that happens to share its second — those are separate events.
-    const entries: MergeableEntry[] = c.fieldEdits.map((e) => {
-      const col = FIELD_COLUMN[e.field];
-      return {
-        editor: displayNameFromEmail(e.editorEmail),
-        when: formatHistoryTimestamp(e.editedAt),
-        text: col ? COLUMN_LABELS[col][board][lang] || e.field : e.field,
-        at: e.editedAt,
-        kind: "field",
-      };
-    });
-    for (const cm of c.comments) {
-      entries.push({
-        editor: displayNameFromEmail(cm.authorEmail),
-        when: formatHistoryTimestamp(cm.createdAt),
-        text: t(lang, "commentAdded"),
-        at: cm.createdAt,
-        kind: "comment",
-      });
-      for (const ed of cm.edits) {
-        entries.push({
-          editor: displayNameFromEmail(ed.editorEmail),
-          when: formatHistoryTimestamp(ed.editedAt),
-          text: t(lang, "commentEdited"),
-          at: ed.editedAt,
-          kind: "comment",
-        });
-      }
-    }
-    entries.sort((a, b) => a.at.localeCompare(b.at));
-    return mergeHistoryEntries(entries, lang);
+  function rowEditCount(c: SupaCaseRow): number {
+    return c.fieldEdits.length + c.comments.reduce((n, cm) => n + cm.edits.length, 0);
   }
 
   function renderCell(colKey: ColumnKey, c: SupaCaseRow, rowKey: string): ReactNode {
@@ -1712,6 +1654,7 @@ export default function SupaBoard({
           <CommentThread
             key={colKey}
             comments={c.comments}
+            commentHistoryHref={canSeeHistory ? historyHref(board, c.id, COMMENT_FIELD) : null}
             cellKey={`${rowKey}-reply`}
             expanded={expandedNotes}
             onToggleClamp={toggleNote}
@@ -1765,7 +1708,8 @@ export default function SupaBoard({
           <td key={colKey}>
             <RowUpdateTag
               label={at ? formatDateTimeUTC8(at) : c.updateDate}
-              entries={rowHistory(c)}
+              count={rowEditCount(c)}
+              href={canSeeHistory ? historyHref(board, c.id) : null}
               lang={lang}
             />
           </td>

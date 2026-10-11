@@ -19,6 +19,7 @@ export const PERMISSION_KEYS = [
   "case.delete",
   "page.dashboard",
   "page.lists",
+  "page.history",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -73,6 +74,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, { zh: string; en: string }
   "case.delete": { zh: "刪除案件", en: "Delete cases" },
   "page.dashboard": { zh: "查看分析儀表板", en: "View analytics dashboard" },
   "page.lists": { zh: "選項管理（維護下拉清單）", en: "Option lists (maintain dropdowns)" },
+  "page.history": { zh: "查看編輯紀錄", en: "View edit history" },
 };
 
 export const PERMISSION_GROUPS: PermissionGroup[] = [
@@ -91,6 +93,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       "case.delete",
       "page.dashboard",
       "page.lists",
+      "page.history",
     ],
   },
 ];

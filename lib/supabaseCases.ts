@@ -4,6 +4,7 @@ import { getSupabaseClient } from "./supabaseClient";
 import { daysSince } from "./cases";
 import { fetchClosedStatuses } from "./statusRules";
 import { CASES_TAG } from "./cacheTags";
+import { canonicalFieldKey } from "./fieldKeys";
 
 // Supabase/PostgREST caps a single response at 1000 rows by default (the
 // project's db-max-rows setting) — anything past that is silently dropped,
@@ -417,7 +418,7 @@ async function loadSupabaseCases(board: SupaBoard, scope: BoardScope): Promise<B
     if (!caseIdSet.has(h.case_id)) continue;
     const list = fieldEditsByCase.get(h.case_id) ?? [];
     list.push({
-      field: h.field_name,
+      field: canonicalFieldKey(h.field_name),
       previousValue: h.previous_value ?? "",
       editorEmail: authorEmailById.get(h.edited_by) ?? "unknown",
       editedAt: h.edited_at,

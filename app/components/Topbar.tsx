@@ -24,6 +24,9 @@ export const PAGE_META = {
   dashboard: {
     title: { zh: "分析儀表板", en: "Dashboard" },
   },
+  history: {
+    title: { zh: "編輯紀錄", en: "Edit history" },
+  },
   lists: {
     title: { zh: "選項管理", en: "Option lists" },
     desc: {

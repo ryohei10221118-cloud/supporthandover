@@ -17,6 +17,7 @@ const STRINGS = {
   navDashboard: { zh: "分析儀表板", en: "Dashboard" },
   previewAs: { zh: "預覽身份", en: "Preview as" },
   navLists: { zh: "選項管理", en: "Option lists" },
+  navHistory: { zh: "編輯紀錄", en: "Edit history" },
   navAdmin: { zh: "管理後台", en: "Admin" },
   logout: { zh: "登出", en: "Sign out" },
 };
@@ -161,6 +162,13 @@ export default function Sidebar({
     </svg>
   );
 
+  const historyIcon = (
+    <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  );
+
   const adminIcon = (
     <svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -188,6 +196,12 @@ export default function Sidebar({
       show: !!effectivePerms?.["page.dashboard"],
     },
     { href: "/lists", label: t(lang, "navLists"), icon: listsIcon, show: !!effectivePerms?.["page.lists"] },
+    {
+      href: "/history",
+      label: t(lang, "navHistory"),
+      icon: historyIcon,
+      show: !!effectivePerms?.["page.history"],
+    },
     // Admin-role only, not permission-gated — see lib/adminGuard.ts. Hidden
     // while previewing another role, so the preview shows what they'd see.
     {

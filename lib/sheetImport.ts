@@ -5,6 +5,7 @@ import { parseCaseRows } from "./cases";
 import { parseHoSheetRows } from "./hoSheetSchema";
 import { resolveSupabaseUserId } from "./supabaseUsers";
 import { SHEET_IMPORT_EMAIL } from "./systemAccounts";
+import { canonicalFieldKey } from "./fieldKeys";
 import type { SupaBoard } from "./supabaseCases";
 import { SYNC_FIELDS, SYNC_FIELD_KEYS, syncFieldsForBoard } from "./sheetImportShared";
 import type {
@@ -993,7 +994,8 @@ async function applyFieldUpdates(updates: FieldUpdate[], editorId: string): Prom
   // the previous value for good.
   const historyRows = updates.map((u) => ({
     case_id: u.id,
-    field_name: u.field,
+    // The board's name for the field, not the sync field's — see fieldKeys.
+    field_name: canonicalFieldKey(u.field),
     previous_value: u.from,
     edited_by: editorId,
     edited_at: noticedAt,
